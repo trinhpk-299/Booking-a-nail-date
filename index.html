@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glam Nails Sunderland — Book Your Appointment</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap');
+
+  :root{
+    --plum:#3b1f2b;
+    --wine:#6b2c3e;
+    --gold:#c8a24a;
+    --gold-light:#e6d3a3;
+    --cream:#faf5ee;
+    --blush:#f3e3e0;
+    --rose:#b8546b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--cream);
+    font-family:'Jost',sans-serif;
+    color:var(--plum);
+    min-height:100vh;
+    padding:0 0 60px;
+  }
+  header{
+    background:linear-gradient(160deg,var(--plum),var(--wine));
+    padding:20px 24px 56px;
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";
+    position:absolute;
+    bottom:-1px; left:0; right:0;
+    height:24px;
+    background:var(--cream);
+    border-radius:50% 50% 0 0 / 100% 100% 0 0;
+  }
+  .contact-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:22px;
+  }
+  .contact-link{
+    color:var(--gold-light);
+    text-decoration:none;
+    font-size:11px;
+    letter-spacing:0.3px;
+    opacity:0.9;
+    line-height:1.4;
+  }
+  .contact-link:active{ opacity:0.6; }
+  .crown{ font-size:28px; color:var(--gold); letter-spacing:4px; margin-top:8px; }
+  h1{
+    font-family:'Cormorant Garamond',serif;
+    font-weight:600;
+    font-size:42px;
+    color:#fff;
+    margin-top:8px;
+    letter-spacing:1px;
+  }
+  header p{
+    color:var(--gold-light);
+    font-size:14px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    margin-top:6px;
+  }
+  main{ max-width:480px; margin:-24px auto 0; padding:0 20px; }
+  .card{
+    background:#fff;
+    border-radius:18px;
+    padding:28px 22px;
+    box-shadow:0 20px 40px -20px rgba(59,31,43,0.25);
+    margin-bottom:20px;
+    border:1px solid var(--blush);
+  }
+  .card h2{
+    font-family:'Cormorant Garamond',serif;
+    font-size:22px;
+    font-weight:600;
+    margin-bottom:14px;
+    color:var(--wine);
+  }
+  label{
+    display:block;
+    font-size:12px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:#8a6b6f;
+    margin:14px 0 6px;
+  }
+  label .req{ color:var(--rose); }
+  input[type=date], input[type=text], input[type=tel], input[type=email], textarea{
+    width:100%;
+    padding:12px 14px;
+    border:1.5px solid var(--blush);
+    border-radius:10px;
+    font-family:'Jost',sans-serif;
+    font-size:15px;
+    color:var(--plum);
+    background:var(--cream);
+  }
+  input:focus, textarea:focus{ outline:none; border-color:var(--gold); }
+  .date-format-hint{
+    font-size:11px;
+    color:#9a7d81;
+    margin-top:6px;
+    letter-spacing:0.3px;
+  }
+
+  .promo-banner{
+    display:none;
+    margin-top:16px;
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:600;
+    text-align:center;
+    letter-spacing:0.5px;
+  }
+  .promo-banner.gold{
+    background:linear-gradient(135deg,var(--gold),#d9b968);
+    color:var(--plum);
+  }
+  .promo-banner.rose{
+    background:linear-gradient(135deg,var(--rose),#c96b81);
+    color:#fff;
+  }
+
+  #slotsGrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
+  .slot{
+    display:block;
+    width:100%;
+    border:1.5px solid var(--blush);
+    border-radius:10px;
+    padding:14px 8px;
+    text-align:center;
+    font-size:14px;
+    font-family:'Jost',sans-serif;
+    font-weight:500;
+    cursor:pointer;
+    background:var(--cream);
+    color:var(--plum);
+    transition:all .15s;
+    -webkit-appearance:none;
+    appearance:none;
+    touch-action:manipulation;
+  }
+  .slot.selected{
+    border-color:var(--gold);
+    background:linear-gradient(135deg,var(--gold-light),#fff8ea);
+    box-shadow:0 4px 12px -4px rgba(200,162,74,0.5);
+  }
+  .slot.full{
+    opacity:0.35;
+    cursor:not-allowed;
+    text-decoration:line-through;
+    pointer-events:none;
+  }
+  .status-msg{ text-align:center; font-size:13px; color:#9a7d81; padding:16px 0; }
+
+  button#submitBtn{
+    width:100%;
+    padding:15px;
+    margin-top:20px;
+    background:linear-gradient(135deg,var(--wine),var(--plum));
+    color:#fff;
+    border:none;
+    border-radius:12px;
+    font-family:'Jost',sans-serif;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:1px;
+    cursor:pointer;
+    transition:transform .1s;
+  }
+  button#submitBtn:active{ transform:scale(0.98); }
+  button#submitBtn:disabled{ opacity:0.5; cursor:not-allowed; }
+  #result{
+    text-align:center;
+    padding:16px;
+    border-radius:12px;
+    margin-top:14px;
+    font-size:14px;
+    display:none;
+  }
+  #result.error{ background:#fbe9e9; color:#a13a3a; display:block; }
+  footer{ text-align:center; font-size:12px; color:#b3969a; margin-top:30px; letter-spacing:1px; }
+
+  .demo-note{
+    max-width:480px;
+    margin:0 auto 16px;
+    padding:10px 20px;
+    font-size:12px;
+    color:#9a7d81;
+    text-align:center;
+  }
+
+  /* Confirmation card */
+  .confirm-icon{
+    text-align:center;
+    font-size:40px;
+    color:var(--gold);
+    margin-bottom:6px;
+  }
+  .confirm-title{
+    text-align:center;
+    font-family:'Cormorant Garamond',serif;
+    font-size:26px;
+    font-weight:600;
+    color:var(--wine);
+    margin-bottom:18px;
+  }
+  .confirm-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:10px 0;
+    border-bottom:1px solid var(--blush);
+    font-size:14px;
+  }
+  .confirm-row:last-of-type{ border-bottom:none; }
+  .confirm-row span{ color:#9a7d81; }
+  .confirm-row strong{ color:var(--plum); text-align:right; }
+  .confirm-note{
+    margin-top:18px;
+    padding:14px;
+    background:var(--cream);
+    border-radius:10px;
+    font-size:13px;
+    line-height:1.5;
+    color:var(--wine);
+    text-align:center;
+  }
+  button.secondary-btn{
+    width:100%;
+    padding:14px;
+    margin-top:16px;
+    background:#fff;
+    color:var(--wine);
+    border:1.5px solid var(--wine);
+    border-radius:12px;
+    font-family:'Jost',sans-serif;
+    font-size:14px;
+    font-weight:600;
+    letter-spacing:0.5px;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="contact-bar">
+    <a class="contact-link" href="https://maps.app.goo.gl/mEzR3dbJurCebjZU9" target="_blank" rel="noopener">📍 35 Melbourne Pl, Sunderland SR4 8LN</a>
+    <a class="contact-link" href="tel:+447873129148">📞 +44 7873 129148</a>
+  </div>
+  <div class="crown">♛</div>
+  <h1>Glam Nails</h1>
+  <p>Book Your Nail Date Now</p>
+</header>
+
+<div class="demo-note" id="demoNote">⚠ Backend not connected yet — paste your Apps Script Web App URL into API_URL in the code.</div>
+
+<main>
+  <div class="card" id="dateCard">
+    <h2>Select a date</h2>
+    <label for="dateInput">Appointment date</label>
+    <input type="date" id="dateInput">
+    <div class="date-format-hint" id="dateFormatHint"></div>
+    <div class="promo-banner gold" id="promoGold">✨ Grand Opening — 50% OFF!</div>
+    <div class="promo-banner rose" id="promoRose">🌸 Opening Week Special — 30% OFF</div>
+  </div>
+
+  <div class="card" id="slotsCard" style="display:none;">
+    <h2>Select a time</h2>
+    <div id="slotsGrid"></div>
+    <div class="status-msg" id="slotsStatus"></div>
+  </div>
+
+  <div class="card" id="formCard" style="display:none;">
+    <h2>Your details</h2>
+    <label for="nameInput">Full name <span class="req">*</span></label>
+    <input type="text" id="nameInput" placeholder="Jane Smith">
+    <label for="phoneInput">Phone number <span class="req">*</span></label>
+    <input type="tel" id="phoneInput" placeholder="07xx xxx xxx">
+    <label for="emailInput">Email address <span class="req">*</span></label>
+    <input type="email" id="emailInput" placeholder="you@example.com">
+    <label for="notesInput">Notes</label>
+    <textarea id="notesInput" rows="2" placeholder="Any special requests"></textarea>
+    <button id="submitBtn">Confirm Booking</button>
+    <div id="result"></div>
+  </div>
+
+  <div class="card" id="confirmCard" style="display:none;">
+    <div class="confirm-icon">✓</div>
+    <div class="confirm-title">You're all set!</div>
+    <div class="confirm-row"><span>Name</span><strong id="confName"></strong></div>
+    <div class="confirm-row"><span>Phone</span><strong id="confPhone"></strong></div>
+    <div class="confirm-row"><span>Email</span><strong id="confEmail"></strong></div>
+    <div class="confirm-row"><span>Date</span><strong id="confDate"></strong></div>
+    <div class="confirm-row"><span>Time</span><strong id="confTime"></strong></div>
+    <div class="confirm-row" id="confNotesRow"><span>Notes</span><strong id="confNotes"></strong></div>
+    <div class="confirm-note">We've sent a confirmation email to your inbox, and this appointment now appears on our Google Calendar.</div>
+    <button class="secondary-btn" id="newBookingBtn">Book another appointment</button>
+  </div>
+</main>
+
+<footer>♛ Every details matter ♛</footer>
+
+<script>
+  /* ============================================================
+     BUSINESS RULES
+     ============================================================ */
+  const MAX_PER_SLOT = 5;
+  const OPEN_HOUR = 9;
+  const CLOSE_HOUR = 18; // last slot starts at 17:00
+  const SPECIAL_OPEN_SUNDAY = "2026-08-23"; // grand opening — open despite being Sunday
+  const PROMO_50_DATE = "2026-08-23";
+  const PROMO_30_START = "2026-08-24";
+  const PROMO_30_END = "2026-09-05";
+
+  /* ============================================================
+     DEMO DATA — replace with real API calls once backend is live
+     ============================================================ */
+  const USE_LIVE_BACKEND = true;
+  const API_URL = "https://script.google.com/macros/s/AKfycbwSUYCqq2STHexQ1Q6KoiQkBeOT8TXKjrMSDU3j0TuZaL6-VpOuz-4aMDsZvRX6Rsw/exec"; // <-- thay bằng URL sau khi deploy Apps Script
+
+  const mockBookings = {};
+
+  const dateCard = document.getElementById('dateCard');
+  const demoNote = document.getElementById('demoNote');
+  if (API_URL.indexOf('PASTE_YOUR') === -1) { demoNote.style.display = 'none'; }
+  const dateInput = document.getElementById('dateInput');
+  const dateFormatHint = document.getElementById('dateFormatHint');
+  const slotsCard = document.getElementById('slotsCard');
+  const slotsGrid = document.getElementById('slotsGrid');
+  const slotsStatus = document.getElementById('slotsStatus');
+  const formCard = document.getElementById('formCard');
+  const submitBtn = document.getElementById('submitBtn');
+  const resultDiv = document.getElementById('result');
+  const promoGold = document.getElementById('promoGold');
+  const promoRose = document.getElementById('promoRose');
+  const confirmCard = document.getElementById('confirmCard');
+  const newBookingBtn = document.getElementById('newBookingBtn');
+
+  let selectedSlot = null;
+
+  const today = new Date().toISOString().split('T')[0];
+  dateInput.min = today;
+  dateInput.value = SPECIAL_OPEN_SUNDAY;
+
+  dateInput.addEventListener('change', loadSlots);
+
+  function isClosed(dateStr){
+    const dow = new Date(dateStr + "T00:00:00").getDay();
+    if (dow !== 0) return false;
+    return dateStr !== SPECIAL_OPEN_SUNDAY;
+  }
+
+  function updatePromoBanners(dateStr){
+    promoGold.style.display = (dateStr === PROMO_50_DATE) ? 'block' : 'none';
+    promoRose.style.display = (dateStr >= PROMO_30_START && dateStr <= PROMO_30_END) ? 'block' : 'none';
+  }
+
+  function pad(n){ return n < 10 ? "0" + n : "" + n; }
+
+  function formatMMDDYYYY(dateStr){
+    const [y, m, d] = dateStr.split('-');
+    return m + '/' + d + '/' + y;
+  }
+
+  function updateDateHint(dateStr){
+    dateFormatHint.textContent = dateStr ? ('Selected: ' + formatMMDDYYYY(dateStr) + ' (MM/DD/YYYY)') : '';
+  }
+
+  async function loadSlots(){
+    const date = dateInput.value;
+    if(!date) return;
+    selectedSlot = null;
+    formCard.style.display = 'none';
+    confirmCard.style.display = 'none';
+    resultDiv.style.display = 'none';
+    slotsCard.style.display = 'block';
+    slotsGrid.innerHTML = '';
+    updatePromoBanners(date);
+    updateDateHint(date);
+
+    if(isClosed(date)){
+      slotsStatus.textContent = 'Closed on Sundays. Please choose another date.';
+      return;
+    }
+    slotsStatus.textContent = '';
+
+    let slots;
+    if(USE_LIVE_BACKEND){
+      try{
+        const res = await fetch(API_URL + '?date=' + date);
+        const data = await res.json();
+        slots = data.slots;
+      }catch(err){
+        slotsStatus.textContent = 'Could not load availability. Please try again.';
+        return;
+      }
+    }else{
+      slots = buildMockSlots(date);
+    }
+
+    slots.forEach(s => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'slot' + (s.full ? ' full' : '');
+      el.disabled = s.full;
+      el.textContent = s.time;
+      if(!s.full){
+        el.addEventListener('click', () => selectSlot(el, s.time));
+      }
+      slotsGrid.appendChild(el);
+    });
+  }
+
+  function buildMockSlots(date){
+    const slots = [];
+    for(let h = OPEN_HOUR; h < CLOSE_HOUR; h++){
+      const label = pad(h) + ":00 - " + pad(h+1) + ":00";
+      const key = date + "|" + label;
+      const booked = mockBookings[key] || 0;
+      slots.push({ time: label, full: booked >= MAX_PER_SLOT });
+    }
+    return slots;
+  }
+
+  function selectSlot(el, time){
+    document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedSlot = time;
+    formCard.style.display = 'block';
+    confirmCard.style.display = 'none';
+    resultDiv.style.display = 'none';
+  }
+
+  submitBtn.addEventListener('click', async () => {
+    const name = document.getElementById('nameInput').value.trim();
+    const phone = document.getElementById('phoneInput').value.trim();
+    const email = document.getElementById('emailInput').value.trim();
+    const notes = document.getElementById('notesInput').value.trim();
+
+    if(!name || !phone || !email || !selectedSlot){
+      showResult('error', 'Please fill in your name, phone number and email.');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
+
+    let success = false;
+    let errorMsg = '';
+
+    if(USE_LIVE_BACKEND){
+      try{
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ date: dateInput.value, time: selectedSlot, name, phone, email, notes })
+        });
+        const data = await res.json();
+        success = !!data.success;
+        errorMsg = data.error || 'Something went wrong. Please try again.';
+      }catch(err){
+        errorMsg = 'Could not reach the server. Please try again.';
+      }
+    }else{
+      const key = dateInput.value + "|" + selectedSlot;
+      mockBookings[key] = (mockBookings[key] || 0) + 1;
+      await new Promise(r => setTimeout(r, 400));
+      success = true;
+    }
+
+    if(success){
+      showConfirmation({ name, phone, email, notes, date: dateInput.value, time: selectedSlot });
+    }else{
+      showResult('error', errorMsg);
+    }
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Confirm Booking';
+  });
+
+  function showConfirmation(booking){
+    document.getElementById('confName').textContent = booking.name;
+    document.getElementById('confPhone').textContent = booking.phone;
+    document.getElementById('confEmail').textContent = booking.email;
+    document.getElementById('confDate').textContent = formatMMDDYYYY(booking.date);
+    document.getElementById('confTime').textContent = booking.time;
+
+    const notesRow = document.getElementById('confNotesRow');
+    if(booking.notes){
+      document.getElementById('confNotes').textContent = booking.notes;
+      notesRow.style.display = 'flex';
+    }else{
+      notesRow.style.display = 'none';
+    }
+
+    dateCard.style.display = 'none';
+    slotsCard.style.display = 'none';
+    formCard.style.display = 'none';
+    confirmCard.style.display = 'block';
+    if(confirmCard.scrollIntoView){ confirmCard.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }
+
+  newBookingBtn.addEventListener('click', () => {
+    clearForm();
+    dateCard.style.display = 'block';
+    confirmCard.style.display = 'none';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    loadSlots();
+  });
+
+  function clearForm(){
+    formCard.querySelectorAll('input, textarea').forEach(i => i.value = '');
+  }
+
+  function showResult(type, msg){
+    resultDiv.className = type;
+    resultDiv.textContent = msg;
+    resultDiv.style.display = 'block';
+  }
+
+  loadSlots();
+</script>
+
+</body>
+</html>
