@@ -18,6 +18,10 @@ const OPEN_HOUR = 10;   // 10:00
 const CLOSE_HOUR = 18;  // 18:00 (slot cuối bắt đầu 17:00)
 const SLOT_MINUTES = 60;
 
+// Luôn dùng giờ UK (tự động cộng/trừ giờ mùa hè BST), không phụ thuộc
+// múi giờ cấu hình của project Apps Script (Cài đặt dự án > Múi giờ).
+const TIMEZONE = "Europe/London";
+
 // Chủ nhật khai trương — mở đặc biệt dù các Chủ nhật khác đóng cửa
 const SPECIAL_OPEN_SUNDAY = "2026-08-23";
 
@@ -52,6 +56,13 @@ function isClosedDate_(dateStr) {
 
 function pad_(n) {
   return n < 10 ? "0" + n : "" + n;
+}
+
+// Đọc 1 mốc ngày+giờ theo đúng giờ UK (tự xử lý BST/GMT), bất kể múi giờ
+// cấu hình của project là gì.
+function ukDateTime_(dateStr, hour) {
+  const wallClock = dateStr + " " + pad_(hour) + ":00:00";
+  return Utilities.parseDate(wallClock, TIMEZONE, "yyyy-MM-dd HH:mm:ss");
 }
 
 /* =========================================================
@@ -169,10 +180,8 @@ function createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes) {
   const calendar = CalendarApp.getCalendarById(SALON_EMAIL) || CalendarApp.getDefaultCalendar();
 
   const startHour = parseInt(timeSlot.split(":")[0], 10);
-  const start = new Date(dateStr + "T00:00:00");
-  start.setHours(startHour, 0, 0, 0);
-  const end = new Date(start);
-  end.setMinutes(end.getMinutes() + SLOT_MINUTES);
+  const start = ukDateTime_(dateStr, startHour);
+  const end = new Date(start.getTime() + SLOT_MINUTES * 60000);
 
   const title = "Nail Appointment — " + name;
   const description =
@@ -256,8 +265,8 @@ function syncManualCalendarEntries() {
     if (event.isAllDayEvent()) return; // bỏ qua sự kiện cả ngày (vd: ngày lễ, ghi chú)
 
     const start = event.getStartTime();
-    const dateStr = Utilities.formatDate(start, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    const hour = start.getHours();
+    const dateStr = Utilities.formatDate(start, TIMEZONE, "yyyy-MM-dd");
+    const hour = parseInt(Utilities.formatDate(start, TIMEZONE, "H"), 10);
     const timeSlot = pad_(hour) + ":00 - " + pad_(hour + 1) + ":00";
 
     const guests = event.getGuestList();
@@ -295,7 +304,7 @@ function keepWarm() {
 function formatDateCell_(cellValue) {
   // Sheet có thể lưu date dưới dạng Date object hoặc string — chuẩn hóa về YYYY-MM-DD
   if (Object.prototype.toString.call(cellValue) === "[object Date]") {
-    return Utilities.formatDate(cellValue, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    return Utilities.formatDate(cellValue, TIMEZONE, "yyyy-MM-dd");
   }
   return cellValue;
 }

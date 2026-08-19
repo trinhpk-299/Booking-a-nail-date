@@ -99,7 +99,7 @@ Việc này giúp script luôn ở trạng thái "ấm", nên hầu hết các l
 - **Giờ hoạt động & business rules hiện tại** — chỉnh trong `Code.gs`, đầu file, phần `CẤU HÌNH`:
   ```js
   const MAX_PER_SLOT = 5;
-  const OPEN_HOUR = 9;
+  const OPEN_HOUR = 10;
   const CLOSE_HOUR = 18;
   const SPECIAL_OPEN_SUNDAY = "2026-08-23"; // Chủ nhật khai trương duy nhất được mở
   ```
@@ -108,4 +108,5 @@ Việc này giúp script luôn ở trạng thái "ấm", nên hầu hết các l
 - **Đồng bộ Calendar**: script tạo sự kiện trên Calendar gắn với `glamnails1409@gmail.com`. Nếu muốn dùng Calendar khác (ví dụ Calendar riêng cho Sunderland), đổi `SALON_EMAIL` hoặc dùng ID Calendar cụ thể trong hàm `createCalendarEvent_()`.
 - **Frontend cũng cần đồng bộ business rules**: `index.html` có riêng các hằng số `MAX_PER_SLOT`, `OPEN_HOUR`, `CLOSE_HOUR`, `SPECIAL_OPEN_SUNDAY` — nếu đổi ở `Code.gs` thì nhớ đổi y hệt trong `index.html` để giao diện và backend luôn khớp nhau.
 - Nếu muốn thêm dropdown chọn dịch vụ (Manicure/Pedicure/Gel...) sau này, nói mình biết — sẽ chỉnh cả form, Sheet và Calendar event.
+- **Múi giờ**: code luôn tính giờ theo UK (`Europe/London`, tự động cộng/trừ giờ mùa hè BST) qua hằng số `TIMEZONE` trong `Code.gs`, không phụ thuộc múi giờ cấu hình của project Apps Script hay của Google Sheet nữa. Những dòng đã lỡ ghi sai giờ vào Sheet **trước khi có bản fix này** (ví dụ các dòng sync từ Calendar bị lệch giờ) sẽ không tự sửa lại — cần bạn kiểm tra và sửa tay cột "Time Slot"/"Date" cho các dòng cũ đó nếu cần.
 
