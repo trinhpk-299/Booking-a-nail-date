@@ -47,6 +47,21 @@ function ensureHeader_() {
   }
 }
 
+// Sắp xếp các dòng (trừ header) theo Date rồi Time Slot tăng dần.
+// Cột Date/Time Slot là chuỗi "yyyy-MM-dd" / "HH:00 - HH:00" nên sort chữ = sort đúng thời gian.
+function sortBookingsSheet_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 3) return;
+  sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn())
+    .sort([{ column: 2, ascending: true }, { column: 3, ascending: true }]);
+}
+
+// Bấm Run hàm này bất cứ lúc nào để sắp xếp lại ngay dữ liệu hiện có trong Sheet.
+function sortBookingsNow() {
+  sortBookingsSheet_();
+}
+
 // Ngày đóng cửa: Chủ nhật, TRỪ ngày khai trương đặc biệt
 function isClosedDate_(dateStr) {
   const dow = new Date(dateStr + "T00:00:00").getDay(); // 0 = Sunday
@@ -159,6 +174,7 @@ function doPost(e) {
     }
 
     sheet.appendRow([new Date(), dateStr, timeSlot, name, phone, email, notes, eventId]);
+    sortBookingsSheet_();
     CacheService.getScriptCache().remove("slots_" + dateStr);
   } finally {
     lock.releaseLock();
@@ -286,6 +302,10 @@ function syncManualCalendarEntries() {
     existingIds[eventId] = true;
     addedCount++;
   });
+
+  if (addedCount > 0) {
+    sortBookingsSheet_();
+  }
 
   Logger.log("Sync xong. Đã thêm " + addedCount + " lịch từ Calendar vào Sheet.");
 }
