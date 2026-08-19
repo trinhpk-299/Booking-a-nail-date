@@ -398,10 +398,10 @@
       slotsStatus.textContent = 'Closed on Sundays. Please choose another date.';
       return;
     }
-    slotsStatus.textContent = '';
 
     let slots;
     if(USE_LIVE_BACKEND){
+      slotsStatus.textContent = 'Loading available times…';
       try{
         const res = await fetch(API_URL + '?date=' + date);
         const data = await res.json();
@@ -410,8 +410,12 @@
         slotsStatus.textContent = 'Could not load availability. Please try again.';
         return;
       }
+      // Keep this date's own request from being clobbered by a stale one still in flight
+      if(dateInput.value !== date) return;
+      slotsStatus.textContent = '';
     }else{
       slots = buildMockSlots(date);
+      slotsStatus.textContent = '';
     }
 
     slots.forEach(s => {

@@ -68,14 +68,28 @@ function doGet(e) {
     return jsonOut_({ date: dateStr, closed: true, slots: [] });
   }
 
+  // Short cache so repeated checks of the same date (e.g. user going back and
+  // forth) don't re-scan the sheet every time — bookings still show up within
+  // a few seconds since new bookings invalidate this date's cache entry.
+  const cache = CacheService.getScriptCache();
+  const cacheKey = "slots_" + dateStr;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return jsonOut_({ date: dateStr, closed: false, slots: JSON.parse(cached) });
+  }
+
   const sheet = getSheet_();
-  const data = sheet.getDataRange().getValues();
+  const lastRow = sheet.getLastRow();
   const counts = {};
-  for (let i = 1; i < data.length; i++) {
-    const rowDate = formatDateCell_(data[i][1]);
-    const rowSlot = data[i][2];
-    if (rowDate === dateStr) {
-      counts[rowSlot] = (counts[rowSlot] || 0) + 1;
+  if (lastRow > 1) {
+    // Only read the Date + Time Slot columns instead of the whole sheet
+    const data = sheet.getRange(2, 2, lastRow - 1, 2).getValues();
+    for (let i = 0; i < data.length; i++) {
+      const rowDate = formatDateCell_(data[i][0]);
+      const rowSlot = data[i][1];
+      if (rowDate === dateStr) {
+        counts[rowSlot] = (counts[rowSlot] || 0) + 1;
+      }
     }
   }
 
@@ -85,6 +99,8 @@ function doGet(e) {
     const booked = counts[label] || 0;
     slots.push({ time: label, full: booked >= MAX_PER_SLOT });
   }
+
+  cache.put(cacheKey, JSON.stringify(slots), 20); // 20s TTL
 
   return jsonOut_({ date: dateStr, closed: false, slots: slots });
 }
@@ -132,6 +148,7 @@ function doPost(e) {
     }
 
     sheet.appendRow([new Date(), dateStr, timeSlot, name, phone, email, notes, eventId]);
+    CacheService.getScriptCache().remove("slots_" + dateStr);
   } finally {
     lock.releaseLock();
   }
@@ -262,6 +279,14 @@ function syncManualCalendarEntries() {
   });
 
   Logger.log("Sync xong. Đã thêm " + addedCount + " lịch từ Calendar vào Sheet.");
+}
+
+/* =========================================================
+   KEEP-WARM — gọi hàm rỗng này mỗi vài phút (Trigger riêng, xem
+   HUONG-DAN-SETUP.md) để giảm độ trễ "cold start" của web app
+   ========================================================= */
+function keepWarm() {
+  ensureHeader_();
 }
 
 /* =========================================================

@@ -80,6 +80,20 @@ Nếu bạn muốn: mỗi khi tự thêm lịch hẹn trực tiếp trên Google
 - Vì Calendar không có sẵn ô "Phone number", cột Phone của các dòng sync tự động sẽ để trống. Nếu muốn lưu SĐT khách, bạn có thể gõ thêm vào phần **mô tả (description)** của sự kiện Calendar theo cú pháp riêng, nhưng cần chỉnh thêm code để đọc ra — nói mình biết nếu muốn làm phần này.
 - Muốn test thử ngay không đợi 15 phút: vào Apps Script > chọn hàm `syncManualCalendarEntries` ở thanh trên cùng > bấm nút **Run** (▶) — chạy thủ công 1 lần ngay lập tức.
 
+## Bước 8 (Tùy chọn nhưng nên làm): Giảm độ trễ lần đầu tải giờ trống
+
+Lần đầu tiên gọi tới web app sau một thời gian không ai dùng, Google Apps Script cần "khởi động lại" (cold start), có thể mất 20-60 giây — đây là giới hạn của nền tảng Apps Script, không phải lỗi code. Để giảm việc này:
+
+1. Trong Apps Script, vào **Triggers** (biểu tượng đồng hồ) > **+ Add Trigger**.
+2. Cấu hình:
+   - Choose which function to run: **`keepWarm`**
+   - Select event source: **Time-driven**
+   - Select type of time based trigger: **Minutes timer**
+   - Select minute interval: **Every 10 minutes**
+3. Bấm **Save**.
+
+Việc này giúp script luôn ở trạng thái "ấm", nên hầu hết các lần khách vào web sẽ tải giờ trống trong 1-3 giây thay vì có thể phải chờ rất lâu ở lần gọi đầu tiên. Ngoài ra, code đã được tối ưu để cache kết quả 20 giây/ngày — bấm qua lại cùng 1 ngày sẽ trả về gần như ngay lập tức.
+
 ## Lưu ý quan trọng
 - **Giới hạn Gmail gửi mail**: tài khoản Gmail thường (không phải Workspace) giới hạn ~100 email/ngày qua Apps Script. Với quy mô salon nhỏ thì thoải mái.
 - **Giờ hoạt động & business rules hiện tại** — chỉnh trong `Code.gs`, đầu file, phần `CẤU HÌNH`:
