@@ -304,22 +304,22 @@ function keepWarm() {
 
    Cách chạy: trong Apps Script, chọn hàm ở thanh trên cùng rồi
    bấm Run (▶):
-     1. previewTimezoneFix_  — chỉ xem log, KHÔNG sửa gì cả
+     1. previewTimezoneFix  — chỉ xem log, KHÔNG sửa gì cả
      2. Mở "Nhật ký thực thi" (Execution log) đọc kỹ danh sách
-     3. Nếu ổn, chạy applyTimezoneFix_ để sửa thật
+     3. Nếu ổn, chạy applyTimezoneFix để sửa thật
 
    - Dòng "Synced from Google Calendar": sự kiện Calendar là
      chuẩn → sửa lại cột Date/Time Slot trong Sheet cho khớp.
    - Dòng đặt từ web: Sheet là chuẩn (đúng như khách chọn) →
      dời lại giờ sự kiện Calendar cho khớp. Việc dời sự kiện có
      thể gửi email "cập nhật lịch hẹn" tới khách thật, nên hãy
-     xem preview trước khi applyTimezoneFix_.
+     xem preview trước khi applyTimezoneFix.
    ========================================================= */
-function previewTimezoneFix_() {
+function previewTimezoneFix() {
   fixHistoricalTimezoneBug_(true);
 }
 
-function applyTimezoneFix_() {
+function applyTimezoneFix() {
   fixHistoricalTimezoneBug_(false);
 }
 
