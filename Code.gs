@@ -57,6 +57,40 @@ function sortBookingsSheet_() {
     .sort([{ column: 2, ascending: true }, { column: 3, ascending: true }]);
 }
 
+// Cột Date (B) phải luôn là VĂN BẢN THUẦN "yyyy-MM-dd". Nếu để Sheets tự
+// nhận dạng đây là kiểu Date, nó sẽ lưu theo múi giờ riêng của Sheet (khác
+// TIMEZONE ở trên) — khi đọc lại có thể bị lệch sang ngày trước/sau, làm
+// đếm sai số chỗ đã đặt của 1 ngày (khách vẫn đặt được dù đã đủ chỗ).
+function ensureDateColumnIsText_() {
+  const sheet = getSheet_();
+  const maxRows = sheet.getMaxRows();
+  if (maxRows > 1) {
+    sheet.getRange(2, 2, maxRows - 1, 1).setNumberFormat("@");
+  }
+}
+
+// Chạy 1 LẦN: ép định dạng cột Date thành text vĩnh viễn (cho các dòng
+// sau này) và chuẩn hoá lại các dòng hiện có nếu đang bị lưu sai kiểu Date.
+function normalizeDateColumn() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+
+  ensureDateColumnIsText_();
+
+  if (lastRow < 2) {
+    Logger.log("Không có dữ liệu để chuẩn hoá.");
+    return;
+  }
+
+  const range = sheet.getRange(2, 2, lastRow - 1, 1);
+  const values = range.getValues();
+  const normalized = values.map(function (r) { return [formatDateCell_(r[0])]; });
+  range.setValues(normalized);
+
+  sortBookingsSheet_();
+  Logger.log("Đã chuẩn hoá cột Date (text) cho " + normalized.length + " dòng.");
+}
+
 // Bấm Run hàm này bất cứ lúc nào để sắp xếp lại ngay dữ liệu hiện có trong Sheet.
 function sortBookingsNow() {
   sortBookingsSheet_();
