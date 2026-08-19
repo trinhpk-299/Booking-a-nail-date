@@ -299,6 +299,116 @@ function keepWarm() {
 }
 
 /* =========================================================
+   SỬA DỮ LIỆU CŨ BỊ LỆCH GIỜ (chạy 1 LẦN, sau khi đã deploy
+   bản code có TIMEZONE fix)
+
+   Cách chạy: trong Apps Script, chọn hàm ở thanh trên cùng rồi
+   bấm Run (▶):
+     1. previewTimezoneFix_  — chỉ xem log, KHÔNG sửa gì cả
+     2. Mở "Nhật ký thực thi" (Execution log) đọc kỹ danh sách
+     3. Nếu ổn, chạy applyTimezoneFix_ để sửa thật
+
+   - Dòng "Synced from Google Calendar": sự kiện Calendar là
+     chuẩn → sửa lại cột Date/Time Slot trong Sheet cho khớp.
+   - Dòng đặt từ web: Sheet là chuẩn (đúng như khách chọn) →
+     dời lại giờ sự kiện Calendar cho khớp. Việc dời sự kiện có
+     thể gửi email "cập nhật lịch hẹn" tới khách thật, nên hãy
+     xem preview trước khi applyTimezoneFix_.
+   ========================================================= */
+function previewTimezoneFix_() {
+  fixHistoricalTimezoneBug_(true);
+}
+
+function applyTimezoneFix_() {
+  fixHistoricalTimezoneBug_(false);
+}
+
+function fixHistoricalTimezoneBug_(dryRun) {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log("Không có dữ liệu để kiểm tra.");
+    return;
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 8).getValues(); // A:H
+  let sheetFixed = 0;
+  let eventsMoved = 0;
+  let skipped = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const rowNum = i + 2;
+    const dateStr = formatDateCell_(row[1]);
+    const timeSlot = row[2];
+    const notes = row[6];
+    const eventId = row[7];
+
+    if (!eventId || String(eventId).indexOf("calendar_error") === 0) {
+      skipped++;
+      continue;
+    }
+
+    let event;
+    try {
+      event = CalendarApp.getEventById(eventId);
+    } catch (err) {
+      event = null;
+    }
+    if (!event) {
+      skipped++;
+      continue;
+    }
+
+    const isSynced = notes === "Synced from Google Calendar";
+
+    if (isSynced) {
+      const actualStart = event.getStartTime();
+      const correctDateStr = Utilities.formatDate(actualStart, TIMEZONE, "yyyy-MM-dd");
+      const correctHour = parseInt(Utilities.formatDate(actualStart, TIMEZONE, "H"), 10);
+      const correctTimeSlot = pad_(correctHour) + ":00 - " + pad_(correctHour + 1) + ":00";
+
+      if (correctDateStr !== dateStr || correctTimeSlot !== timeSlot) {
+        Logger.log(
+          "Dòng " + rowNum + " (sync từ Calendar): " + dateStr + " " + timeSlot +
+          "  ->  " + correctDateStr + " " + correctTimeSlot
+        );
+        if (!dryRun) {
+          sheet.getRange(rowNum, 2).setValue(correctDateStr);
+          sheet.getRange(rowNum, 3).setValue(correctTimeSlot);
+        }
+        sheetFixed++;
+      }
+    } else {
+      if (!dateStr || !timeSlot) { skipped++; continue; }
+      const startHour = parseInt(timeSlot.split(":")[0], 10);
+      const correctStart = ukDateTime_(dateStr, startHour);
+      const correctEnd = new Date(correctStart.getTime() + SLOT_MINUTES * 60000);
+      const actualStart = event.getStartTime();
+
+      if (Math.abs(actualStart.getTime() - correctStart.getTime()) > 60000) {
+        Logger.log(
+          "Dòng " + rowNum + " (booking web) — sự kiện Calendar đang ở " +
+          Utilities.formatDate(actualStart, TIMEZONE, "yyyy-MM-dd HH:mm") +
+          " (UK), sẽ dời về " + dateStr + " " + timeSlot
+        );
+        if (!dryRun) {
+          event.setTime(correctStart, correctEnd);
+        }
+        eventsMoved++;
+      }
+    }
+  }
+
+  Logger.log(
+    (dryRun ? "[XEM TRƯỚC — chưa sửa gì] " : "[ĐÃ SỬA] ") +
+    sheetFixed + " dòng Sheet (từ sync Calendar) cần sửa, " +
+    eventsMoved + " sự kiện Calendar (booking web) cần dời giờ, " +
+    "bỏ qua " + skipped + " dòng (thiếu Event ID hoặc event đã bị xóa)."
+  );
+}
+
+/* =========================================================
    Helpers
    ========================================================= */
 function formatDateCell_(cellValue) {
