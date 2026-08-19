@@ -14,7 +14,7 @@
 
 // ===================== CẤU HÌNH =====================
 const MAX_PER_SLOT = 5;
-const OPEN_HOUR = 9;    // 9:00
+const OPEN_HOUR = 10;   // 10:00
 const CLOSE_HOUR = 18;  // 18:00 (slot cuối bắt đầu 17:00)
 const SLOT_MINUTES = 60;
 
