@@ -13,7 +13,7 @@
  */
 
 // ===================== CẤU HÌNH =====================
-const MAX_PER_SLOT = 5;
+const MAX_PER_SLOT = 3;
 const OPEN_HOUR = 10;   // 10:00
 const CLOSE_HOUR = 18;  // 18:00 (slot cuối bắt đầu 17:00)
 const SLOT_MINUTES = 60;
@@ -34,7 +34,19 @@ const SALON_PHONE = "+44 7873 129148";
 const WEBSITE_SOURCE_TAG = "glamnails_website_booking";
 // Sync quét lịch trong khoảng từ hôm nay tới bao nhiêu ngày tới
 const SYNC_LOOKAHEAD_DAYS = 60;
+
+// Dịch vụ + thời lượng (phút). Phải khớp với SERVICES trong index.html.
+const SERVICES = {
+  "Nail Art": 60,
+  "Manicure": 30,
+  "Pedicure": 30
+};
+
+// Màu chữ cho các dòng lịch hẹn đã trôi qua (xám đậm)
+const PAST_TEXT_COLOR = "#666666";
 // ======================================================
+
+const SHEET_HEADERS = ["Timestamp", "Date", "Time Slot", "Customer Name", "Phone", "Email", "Notes", "Calendar Event ID", "Services", "Duration (mins)"];
 
 function getSheet_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Bookings");
@@ -43,8 +55,29 @@ function getSheet_() {
 function ensureHeader_() {
   const sheet = getSheet_();
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["Timestamp", "Date", "Time Slot", "Customer Name", "Phone", "Email", "Notes", "Calendar Event ID"]);
+    sheet.appendRow(SHEET_HEADERS);
+    return;
   }
+  // Sheet có sẵn dữ liệu từ trước khi có cột Services/Duration — bổ sung
+  // thêm các cột còn thiếu vào cuối header, không đụng tới cột cũ.
+  const existingHeader = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (existingHeader.length < SHEET_HEADERS.length) {
+    const missing = SHEET_HEADERS.slice(existingHeader.length);
+    sheet.getRange(1, existingHeader.length + 1, 1, missing.length).setValues([missing]);
+  }
+}
+
+// Tính tổng thời lượng (phút) từ danh sách tên dịch vụ. Trả về -1 nếu có
+// dịch vụ không hợp lệ (không có trong SERVICES) hoặc danh sách rỗng.
+function computeDurationMinutes_(servicesList) {
+  if (!servicesList || !servicesList.length) return -1;
+  let total = 0;
+  for (let i = 0; i < servicesList.length; i++) {
+    const minutes = SERVICES[servicesList[i]];
+    if (!minutes) return -1;
+    total += minutes;
+  }
+  return total;
 }
 
 // Sắp xếp các dòng (trừ header) theo Date rồi Time Slot tăng dần.
@@ -177,9 +210,15 @@ function doPost(e) {
   const phone = (body.phone || "").trim();
   const email = (body.email || "").trim();
   const notes = (body.notes || "").trim();
+  const servicesList = Array.isArray(body.services) ? body.services : [];
 
-  if (!dateStr || !timeSlot || !name || !phone || !email) {
+  if (!dateStr || !timeSlot || !name || !phone || !email || !servicesList.length) {
     return jsonOut_({ success: false, error: "Missing required information." });
+  }
+
+  const durationMinutes = computeDurationMinutes_(servicesList);
+  if (durationMinutes <= 0) {
+    return jsonOut_({ success: false, error: "Invalid service selection." });
   }
 
   if (isClosedDate_(dateStr)) {
@@ -202,12 +241,12 @@ function doPost(e) {
 
     // Tạo sự kiện Calendar TRƯỚC khi ghi Sheet để có event ID lưu lại
     try {
-      eventId = createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes);
+      eventId = createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes, servicesList, durationMinutes);
     } catch (calErr) {
       eventId = "calendar_error: " + calErr.message;
     }
 
-    sheet.appendRow([new Date(), dateStr, timeSlot, name, phone, email, notes, eventId]);
+    sheet.appendRow([new Date(), dateStr, timeSlot, name, phone, email, notes, eventId, servicesList.join(", "), durationMinutes]);
     sortBookingsSheet_();
     CacheService.getScriptCache().remove("slots_" + dateStr);
   } finally {
@@ -215,7 +254,7 @@ function doPost(e) {
   }
 
   try {
-    sendConfirmationEmail_(email, name, dateStr, timeSlot);
+    sendConfirmationEmail_(email, name, dateStr, timeSlot, servicesList, durationMinutes);
   } catch (err) {
     // Không chặn booking nếu gửi email lỗi
   }
@@ -226,18 +265,19 @@ function doPost(e) {
 /* =========================================================
    Google Calendar — tạo sự kiện trên lịch của salon
    ========================================================= */
-function createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes) {
+function createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes, servicesList, durationMinutes) {
   const calendar = CalendarApp.getCalendarById(SALON_EMAIL) || CalendarApp.getDefaultCalendar();
 
   const startHour = parseInt(timeSlot.split(":")[0], 10);
   const start = ukDateTime_(dateStr, startHour);
-  const end = new Date(start.getTime() + SLOT_MINUTES * 60000);
+  const end = new Date(start.getTime() + durationMinutes * 60000);
 
   const title = "Nail Appointment — " + name;
   const description =
     "Customer: " + name + "\n" +
     "Phone: " + phone + "\n" +
     "Email: " + email + "\n" +
+    "Services: " + servicesList.join(", ") + " (" + durationMinutes + " mins)\n" +
     (notes ? ("Notes: " + notes + "\n") : "") +
     "\nBooked via Glam Nails Sunderland website.";
 
@@ -257,7 +297,7 @@ function createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes) {
 /* =========================================================
    Email xác nhận cho khách
    ========================================================= */
-function sendConfirmationEmail_(toEmail, name, dateStr, timeSlot) {
+function sendConfirmationEmail_(toEmail, name, dateStr, timeSlot, servicesList, durationMinutes) {
   const formattedDate = formatMMDDYYYY_(dateStr);
   const subject = "Booking Confirmed — " + SALON_NAME;
   const body =
@@ -265,6 +305,8 @@ function sendConfirmationEmail_(toEmail, name, dateStr, timeSlot) {
     "Your appointment at " + SALON_NAME + " is confirmed:\n\n" +
     "Date: " + formattedDate + "\n" +
     "Time: " + timeSlot + "\n" +
+    "Services: " + servicesList.join(", ") + "\n" +
+    "Estimated duration: " + durationMinutes + " minutes\n" +
     "Location: " + SALON_ADDRESS + "\n\n" +
     "This appointment has also been added to our calendar, and you should receive a Google Calendar invite at this email address shortly.\n\n" +
     "Need to reschedule or have a question? Call or text us at " + SALON_PHONE + ".\n\n" +
@@ -321,6 +363,7 @@ function syncManualCalendarEntries() {
 
     const guests = event.getGuestList();
     const guestEmail = guests.length > 0 ? guests[0].getEmail() : "";
+    const durationMins = Math.round((event.getEndTime().getTime() - start.getTime()) / 60000);
 
     sheet.appendRow([
       new Date(),               // Timestamp
@@ -330,7 +373,9 @@ function syncManualCalendarEntries() {
       "",                       // Phone — không có sẵn từ Calendar, để trống
       guestEmail,                // Email nếu có khách mời
       "Synced from Google Calendar", // Notes
-      eventId                   // Calendar Event ID — đánh dấu đã sync
+      eventId,                  // Calendar Event ID — đánh dấu đã sync
+      "",                       // Services — không có sẵn từ Calendar
+      durationMins              // Duration (mins) — tính từ giờ thật của sự kiện
     ]);
 
     existingIds[eventId] = true;
@@ -341,7 +386,49 @@ function syncManualCalendarEntries() {
     sortBookingsSheet_();
   }
 
+  formatPastBookings_();
+
   Logger.log("Sync xong. Đã thêm " + addedCount + " lịch từ Calendar vào Sheet.");
+}
+
+/* =========================================================
+   TÔ XÁM LỊCH HẸN ĐÃ QUA — dòng nào có giờ bắt đầu (theo giờ UK)
+   đã ở trong quá khứ sẽ được chuyển màu chữ sang xám đậm.
+   ========================================================= */
+function formatPastBookings_() {
+  const sheet = getSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const numCols = sheet.getLastColumn();
+  const dataRange = sheet.getRange(2, 1, lastRow - 1, numCols);
+  const dateTimeValues = sheet.getRange(2, 2, lastRow - 1, 2).getValues();
+  const now = Date.now();
+
+  const colorGrid = [];
+  for (let i = 0; i < dateTimeValues.length; i++) {
+    const dateStr = formatDateCell_(dateTimeValues[i][0]);
+    const timeSlot = dateTimeValues[i][1];
+    let isPast = false;
+    if (dateStr && timeSlot) {
+      const startHour = parseInt(String(timeSlot).split(":")[0], 10);
+      if (!isNaN(startHour)) {
+        isPast = ukDateTime_(dateStr, startHour).getTime() < now;
+      }
+    }
+    const rowColors = [];
+    for (let c = 0; c < numCols; c++) {
+      rowColors.push(isPast ? PAST_TEXT_COLOR : null);
+    }
+    colorGrid.push(rowColors);
+  }
+
+  dataRange.setFontColors(colorGrid);
+}
+
+// Bấm Run bất cứ lúc nào để tô xám ngay các lịch hẹn đã qua giờ hẹn.
+function refreshPastBookingFormatting() {
+  formatPastBookings_();
 }
 
 /* =========================================================
@@ -350,6 +437,7 @@ function syncManualCalendarEntries() {
    ========================================================= */
 function keepWarm() {
   ensureHeader_();
+  formatPastBookings_();
 }
 
 /* =========================================================

@@ -135,6 +135,42 @@
     color:#fff;
   }
 
+  #servicesGrid{ display:flex; flex-direction:column; gap:12px; margin-top:6px; }
+  .service-tile{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    border:1.5px solid var(--blush);
+    border-radius:12px;
+    padding:10px;
+    cursor:pointer;
+    transition:all .15s;
+  }
+  .service-tile.selected{
+    border-color:var(--gold);
+    background:linear-gradient(135deg,var(--gold-light),#fff8ea);
+    box-shadow:0 4px 12px -4px rgba(200,162,74,0.5);
+  }
+  .service-tile img{
+    width:56px;
+    height:56px;
+    border-radius:10px;
+    object-fit:cover;
+    flex-shrink:0;
+  }
+  .service-tile .service-info{ flex:1; }
+  .service-tile .service-name{ font-weight:600; font-size:15px; }
+  .service-tile .service-duration{ font-size:12px; color:#9a7d81; margin-top:2px; }
+  .service-tile input[type=checkbox]{ width:18px; height:18px; accent-color:var(--gold); flex-shrink:0; }
+  .service-total{
+    margin-top:14px;
+    text-align:center;
+    font-size:13px;
+    font-weight:600;
+    color:var(--wine);
+    min-height:16px;
+  }
+
   #slotsGrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
   .slot{
     display:block;
@@ -286,6 +322,12 @@
     <div class="status-msg" id="slotsStatus"></div>
   </div>
 
+  <div class="card" id="servicesCard" style="display:none;">
+    <h2>Select your service(s)</h2>
+    <div id="servicesGrid"></div>
+    <div class="service-total" id="serviceTotal"></div>
+  </div>
+
   <div class="card" id="formCard" style="display:none;">
     <h2>Your details</h2>
     <label for="nameInput">Full name <span class="req">*</span></label>
@@ -308,6 +350,8 @@
     <div class="confirm-row"><span>Email</span><strong id="confEmail"></strong></div>
     <div class="confirm-row"><span>Date</span><strong id="confDate"></strong></div>
     <div class="confirm-row"><span>Time</span><strong id="confTime"></strong></div>
+    <div class="confirm-row"><span>Services</span><strong id="confServices"></strong></div>
+    <div class="confirm-row"><span>Duration</span><strong id="confDuration"></strong></div>
     <div class="confirm-row" id="confNotesRow"><span>Notes</span><strong id="confNotes"></strong></div>
     <div class="confirm-note">We've sent a confirmation email to your inbox, and this appointment now appears on our Google Calendar.</div>
     <button class="secondary-btn" id="newBookingBtn">Book another appointment</button>
@@ -320,13 +364,20 @@
   /* ============================================================
      BUSINESS RULES
      ============================================================ */
-  const MAX_PER_SLOT = 5;
+  const MAX_PER_SLOT = 3;
   const OPEN_HOUR = 10;
   const CLOSE_HOUR = 18; // last slot starts at 17:00
   const SPECIAL_OPEN_SUNDAY = "2026-08-23"; // grand opening — open despite being Sunday
   const PROMO_50_DATE = "2026-08-23";
   const PROMO_30_START = "2026-08-24";
   const PROMO_30_END = "2026-09-05";
+
+  // Dịch vụ + thời lượng (phút). Phải khớp với SERVICES trong Code.gs.
+  const SERVICES = [
+    { key: 'nail_art', label: 'Nail Art', minutes: 60, image: 'nail%20art.jpg' },
+    { key: 'manicure', label: 'Manicure', minutes: 30, image: 'manicure.jpg' },
+    { key: 'pedicure', label: 'Pedicure', minutes: 30, image: 'pedicure.jpg' }
+  ];
 
   /* ============================================================
      DEMO DATA — replace with real API calls once backend is live
@@ -344,6 +395,9 @@
   const slotsCard = document.getElementById('slotsCard');
   const slotsGrid = document.getElementById('slotsGrid');
   const slotsStatus = document.getElementById('slotsStatus');
+  const servicesCard = document.getElementById('servicesCard');
+  const servicesGrid = document.getElementById('servicesGrid');
+  const serviceTotal = document.getElementById('serviceTotal');
   const formCard = document.getElementById('formCard');
   const submitBtn = document.getElementById('submitBtn');
   const resultDiv = document.getElementById('result');
@@ -353,6 +407,53 @@
   const newBookingBtn = document.getElementById('newBookingBtn');
 
   let selectedSlot = null;
+  const selectedServices = new Set();
+
+  function formatDuration(minutes){
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if(h && m) return h + 'h ' + m + 'm';
+    if(h) return h + 'h';
+    return m + 'm';
+  }
+
+  SERVICES.forEach(svc => {
+    const tile = document.createElement('label');
+    tile.className = 'service-tile';
+    tile.innerHTML =
+      '<img src="' + svc.image + '" alt="' + svc.label + '">' +
+      '<span class="service-info">' +
+        '<span class="service-name">' + svc.label + '</span>' +
+        '<span class="service-duration">' + formatDuration(svc.minutes) + '</span>' +
+      '</span>' +
+      '<input type="checkbox">';
+    const checkbox = tile.querySelector('input');
+    checkbox.addEventListener('change', () => {
+      if(checkbox.checked){ selectedServices.add(svc.key); tile.classList.add('selected'); }
+      else{ selectedServices.delete(svc.key); tile.classList.remove('selected'); }
+      updateServiceTotal();
+    });
+    servicesGrid.appendChild(tile);
+  });
+
+  function updateServiceTotal(){
+    const chosen = SERVICES.filter(s => selectedServices.has(s.key));
+    const total = chosen.reduce((sum, s) => sum + s.minutes, 0);
+    serviceTotal.textContent = chosen.length ? ('Total time: ' + formatDuration(total)) : '';
+    formCard.style.display = chosen.length ? 'block' : 'none';
+    if(!chosen.length){
+      confirmCard.style.display = 'none';
+      resultDiv.style.display = 'none';
+    }
+  }
+
+  function resetServices(){
+    selectedServices.clear();
+    servicesGrid.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+    servicesGrid.querySelectorAll('.service-tile').forEach(t => t.classList.remove('selected'));
+    serviceTotal.textContent = '';
+    servicesCard.style.display = 'none';
+  }
 
   const today = new Date().toISOString().split('T')[0];
   dateInput.min = today;
@@ -386,6 +487,7 @@
     const date = dateInput.value;
     if(!date) return;
     selectedSlot = null;
+    resetServices();
     formCard.style.display = 'none';
     confirmCard.style.display = 'none';
     resultDiv.style.display = 'none';
@@ -446,7 +548,8 @@
     document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
     el.classList.add('selected');
     selectedSlot = time;
-    formCard.style.display = 'block';
+    servicesCard.style.display = 'block';
+    formCard.style.display = selectedServices.size ? 'block' : 'none';
     confirmCard.style.display = 'none';
     resultDiv.style.display = 'none';
   }
@@ -456,9 +559,12 @@
     const phone = document.getElementById('phoneInput').value.trim();
     const email = document.getElementById('emailInput').value.trim();
     const notes = document.getElementById('notesInput').value.trim();
+    const chosenServices = SERVICES.filter(s => selectedServices.has(s.key));
+    const services = chosenServices.map(s => s.label);
+    const totalMinutes = chosenServices.reduce((sum, s) => sum + s.minutes, 0);
 
-    if(!name || !phone || !email || !selectedSlot){
-      showResult('error', 'Please fill in your name, phone number and email.');
+    if(!name || !phone || !email || !selectedSlot || !services.length){
+      showResult('error', 'Please fill in your name, phone number, email, and select at least one service.');
       return;
     }
 
@@ -472,7 +578,7 @@
       try{
         const res = await fetch(API_URL, {
           method: 'POST',
-          body: JSON.stringify({ date: dateInput.value, time: selectedSlot, name, phone, email, notes })
+          body: JSON.stringify({ date: dateInput.value, time: selectedSlot, services, name, phone, email, notes })
         });
         const data = await res.json();
         success = !!data.success;
@@ -488,7 +594,7 @@
     }
 
     if(success){
-      showConfirmation({ name, phone, email, notes, date: dateInput.value, time: selectedSlot });
+      showConfirmation({ name, phone, email, notes, date: dateInput.value, time: selectedSlot, services, totalMinutes });
     }else{
       showResult('error', errorMsg);
     }
@@ -503,6 +609,8 @@
     document.getElementById('confEmail').textContent = booking.email;
     document.getElementById('confDate').textContent = formatMMDDYYYY(booking.date);
     document.getElementById('confTime').textContent = booking.time;
+    document.getElementById('confServices').textContent = booking.services.join(', ');
+    document.getElementById('confDuration').textContent = formatDuration(booking.totalMinutes);
 
     const notesRow = document.getElementById('confNotesRow');
     if(booking.notes){
