@@ -187,11 +187,15 @@ function doGet(e) {
     }
   }
 
+  // "past" luôn tính theo giờ UK thật (Date.now() là mốc thời gian tuyệt đối,
+  // không phụ thuộc múi giờ thiết bị khách) — không dựa vào đồng hồ trình duyệt.
+  const nowMs = Date.now();
   const slots = [];
   for (let h = OPEN_HOUR; h < CLOSE_HOUR; h++) {
     const label = pad_(h) + ":00 - " + pad_(h + 1) + ":00";
     const booked = counts[label] || 0;
-    slots.push({ time: label, full: booked >= MAX_PER_SLOT });
+    const isPast = ukDateTime_(dateStr, h).getTime() < nowMs;
+    slots.push({ time: label, full: booked >= MAX_PER_SLOT, past: isPast });
   }
 
   cache.put(cacheKey, JSON.stringify(slots), 20); // 20s TTL

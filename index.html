@@ -523,11 +523,10 @@
       slotsStatus.textContent = '';
     }
 
-    const ukNow = getUKNowParts();
     slots.forEach(s => {
-      const startHour = parseInt(s.time.split(':')[0], 10);
-      const isPast = (date === ukNow.dateStr) && (startHour < ukNow.hour);
-      const unavailable = s.full || isPast;
+      // "past" được tính ở server theo giờ UK thật (không dựa vào đồng hồ
+      // trình duyệt của khách) — xem doGet trong Code.gs.
+      const unavailable = s.full || s.past;
 
       const el = document.createElement('button');
       el.type = 'button';
