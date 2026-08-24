@@ -151,13 +151,6 @@
     background:linear-gradient(135deg,var(--gold-light),#fff8ea);
     box-shadow:0 4px 12px -4px rgba(200,162,74,0.5);
   }
-  .service-tile img{
-    width:56px;
-    height:56px;
-    border-radius:10px;
-    object-fit:cover;
-    flex-shrink:0;
-  }
   .service-tile .service-info{ flex:1; }
   .service-tile .service-name{ font-weight:600; font-size:15px; }
   .service-tile .service-duration{ font-size:12px; color:#9a7d81; margin-top:2px; }
@@ -374,9 +367,10 @@
 
   // Dịch vụ + thời lượng (phút). Phải khớp với SERVICES trong Code.gs.
   const SERVICES = [
-    { key: 'nail_art', label: 'Nail Art', minutes: 60, image: 'nail%20art.jpg' },
-    { key: 'manicure', label: 'Manicure', minutes: 30, image: 'manicure.jpg' },
-    { key: 'pedicure', label: 'Pedicure', minutes: 30, image: 'pedicure.jpg' }
+    { key: 'hands', label: 'For Your Hands', minutes: 60 },
+    { key: 'toes', label: 'For Your Toes', minutes: 30 },
+    { key: 'nail_art', label: 'Plus Nail Art', minutes: 30 },
+    { key: 'pedicure', label: 'Full Spa Pedicure', minutes: 45 }
   ];
 
   /* ============================================================
@@ -421,12 +415,11 @@
     const tile = document.createElement('label');
     tile.className = 'service-tile';
     tile.innerHTML =
-      '<img src="' + svc.image + '" alt="' + svc.label + '">' +
+      '<input type="checkbox">' +
       '<span class="service-info">' +
         '<span class="service-name">' + svc.label + '</span>' +
         '<span class="service-duration">' + formatDuration(svc.minutes) + '</span>' +
-      '</span>' +
-      '<input type="checkbox">';
+      '</span>';
     const checkbox = tile.querySelector('input');
     checkbox.addEventListener('change', () => {
       if(checkbox.checked){ selectedServices.add(svc.key); tile.classList.add('selected'); }

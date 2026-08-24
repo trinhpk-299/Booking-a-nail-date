@@ -37,9 +37,10 @@ const SYNC_LOOKAHEAD_DAYS = 60;
 
 // Dịch vụ + thời lượng (phút). Phải khớp với SERVICES trong index.html.
 const SERVICES = {
-  "Nail Art": 60,
-  "Manicure": 30,
-  "Pedicure": 30
+  "For Your Hands": 60,
+  "For Your Toes": 30,
+  "Plus Nail Art": 30,
+  "Full Spa Pedicure": 45
 };
 
 // Màu chữ cho các dòng lịch hẹn đã trôi qua (xám đậm)
