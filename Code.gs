@@ -226,6 +226,11 @@ function doPost(e) {
     return jsonOut_({ success: false, error: "Salon is closed on this date." });
   }
 
+  const startHourCheck = parseInt(timeSlot.split(":")[0], 10);
+  if (isNaN(startHourCheck) || ukDateTime_(dateStr, startHourCheck).getTime() < Date.now()) {
+    return jsonOut_({ success: false, error: "This time slot is in the past. Please choose another." });
+  }
+
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   let eventId = "";

@@ -448,9 +448,19 @@
     servicesCard.style.display = 'none';
   }
 
-  const today = new Date().toISOString().split('T')[0];
-  dateInput.min = today;
-  dateInput.value = SPECIAL_OPEN_SUNDAY;
+  // Luôn lấy ngày/giờ hiện tại theo giờ UK (Europe/London), bất kể khách
+  // đang truy cập từ múi giờ nào — để không cho đặt vào giờ đã qua.
+  function getUKNowParts(){
+    const now = new Date();
+    const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    const timeStr = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+    const [hour, minute] = timeStr.split(':').map(Number);
+    return { dateStr, hour, minute };
+  }
+
+  const ukToday = getUKNowParts().dateStr;
+  dateInput.min = ukToday;
+  dateInput.value = ukToday;
 
   dateInput.addEventListener('change', loadSlots);
 
@@ -513,13 +523,18 @@
       slotsStatus.textContent = '';
     }
 
+    const ukNow = getUKNowParts();
     slots.forEach(s => {
+      const startHour = parseInt(s.time.split(':')[0], 10);
+      const isPast = (date === ukNow.dateStr) && (startHour < ukNow.hour);
+      const unavailable = s.full || isPast;
+
       const el = document.createElement('button');
       el.type = 'button';
-      el.className = 'slot' + (s.full ? ' full' : '');
-      el.disabled = s.full;
+      el.className = 'slot' + (unavailable ? ' full' : '');
+      el.disabled = unavailable;
       el.textContent = s.time;
-      if(!s.full){
+      if(!unavailable){
         el.addEventListener('click', () => selectSlot(el, s.time));
       }
       slotsGrid.appendChild(el);
