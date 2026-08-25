@@ -510,6 +510,11 @@
       try{
         const res = await fetch(API_URL + '?date=' + date);
         const data = await res.json();
+        if(dateInput.value !== date) return; // a newer date change is already in flight
+        if(data.closed){
+          slotsStatus.textContent = 'Closed on this date. Please choose another.';
+          return;
+        }
         slots = data.slots;
       }catch(err){
         slotsStatus.textContent = 'Could not load availability. Please try again.';

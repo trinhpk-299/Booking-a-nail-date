@@ -133,8 +133,40 @@ function sortBookingsNow() {
 // Ngày đóng cửa: Chủ nhật, TRỪ ngày khai trương đặc biệt
 function isClosedDate_(dateStr) {
   const dow = new Date(dateStr + "T00:00:00").getDay(); // 0 = Sunday
-  if (dow !== 0) return false;
-  return dateStr !== SPECIAL_OPEN_SUNDAY;
+  if (dow === 0 && dateStr !== SPECIAL_OPEN_SUNDAY) return true;
+  return !!getClosedDatesSet_()[dateStr];
+}
+
+// Tab "Closed Dates" — cho phép chủ salon tự đóng cửa 1 ngày bất kỳ
+// bằng cách gõ thêm dòng vào Sheet, không cần sửa code.
+const CLOSED_DATES_SHEET = "Closed Dates";
+
+function ensureClosedDatesSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CLOSED_DATES_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(CLOSED_DATES_SHEET);
+    sheet.appendRow(["Date (yyyy-mm-dd)", "Note (optional)"]);
+  }
+  const maxRows = sheet.getMaxRows();
+  if (maxRows > 1) {
+    sheet.getRange(2, 1, maxRows - 1, 1).setNumberFormat("@"); // tránh Sheets tự đổi thành kiểu Date
+  }
+  return sheet;
+}
+
+function getClosedDatesSet_() {
+  const sheet = ensureClosedDatesSheet_();
+  const lastRow = sheet.getLastRow();
+  const set = {};
+  if (lastRow > 1) {
+    const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (let i = 0; i < values.length; i++) {
+      const d = formatDateCell_(values[i][0]);
+      if (d) set[d] = true;
+    }
+  }
+  return set;
 }
 
 function pad_(n) {
