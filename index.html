@@ -358,9 +358,18 @@
      BUSINESS RULES
      ============================================================ */
   const MAX_PER_SLOT = 3;
-  const OPEN_HOUR = 10;
-  const CLOSE_HOUR = 18; // last slot starts at 17:00
-  const SPECIAL_OPEN_SUNDAY = "2026-08-23"; // grand opening — open despite being Sunday
+  // Giờ mở cửa theo thứ (giờ UK). 0 = Chủ nhật ... 6 = Thứ bảy. Phải khớp
+  // với HOURS_BY_DOW trong Code.gs. Chỉ dùng cho chế độ demo (mock) bên dưới —
+  // khi USE_LIVE_BACKEND=true, giờ mở cửa thật lấy từ server.
+  const HOURS_BY_DOW = {
+    0: { open: 10, close: 16.5 },
+    1: { open: 10, close: 18 },
+    2: { open: 10, close: 18 },
+    3: { open: 10, close: 18 },
+    4: { open: 10, close: 18 },
+    5: { open: 10, close: 18 },
+    6: { open: 10, close: 18 }
+  };
   const PROMO_50_DATE = "2026-08-23";
   const PROMO_30_START = "2026-08-24";
   const PROMO_30_END = "2026-09-05";
@@ -464,12 +473,6 @@
 
   dateInput.addEventListener('change', loadSlots);
 
-  function isClosed(dateStr){
-    const dow = new Date(dateStr + "T00:00:00").getDay();
-    if (dow !== 0) return false;
-    return dateStr !== SPECIAL_OPEN_SUNDAY;
-  }
-
   function updatePromoBanners(dateStr){
     promoGold.style.display = (dateStr === PROMO_50_DATE) ? 'block' : 'none';
     promoRose.style.display = (dateStr >= PROMO_30_START && dateStr <= PROMO_30_END) ? 'block' : 'none';
@@ -498,11 +501,6 @@
     slotsGrid.innerHTML = '';
     updatePromoBanners(date);
     updateDateHint(date);
-
-    if(isClosed(date)){
-      slotsStatus.textContent = 'Closed on Sundays. Please choose another date.';
-      return;
-    }
 
     let slots;
     if(USE_LIVE_BACKEND){
@@ -545,10 +543,19 @@
     });
   }
 
+  function formatHourLabel(hourDecimal){
+    const h = Math.floor(hourDecimal);
+    const m = Math.round((hourDecimal - h) * 60);
+    return pad(h) + ":" + pad(m);
+  }
+
   function buildMockSlots(date){
+    const dow = new Date(date + "T00:00:00").getDay();
+    const hours = HOURS_BY_DOW[dow];
     const slots = [];
-    for(let h = OPEN_HOUR; h < CLOSE_HOUR; h++){
-      const label = pad(h) + ":00 - " + pad(h+1) + ":00";
+    for(let h = hours.open; h < hours.close; h++){
+      const end = Math.min(h + 1, hours.close);
+      const label = formatHourLabel(h) + " - " + formatHourLabel(end);
       const key = date + "|" + label;
       const booked = mockBookings[key] || 0;
       slots.push({ time: label, full: booked >= MAX_PER_SLOT });

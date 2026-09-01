@@ -14,16 +14,23 @@
 
 // ===================== CẤU HÌNH =====================
 const MAX_PER_SLOT = 3;
-const OPEN_HOUR = 10;   // 10:00
-const CLOSE_HOUR = 18;  // 18:00 (slot cuối bắt đầu 17:00)
 const SLOT_MINUTES = 60;
+
+// Giờ mở cửa theo thứ trong tuần (giờ UK). 0 = Chủ nhật ... 6 = Thứ bảy.
+// "close" có thể lẻ (vd 16.5 = 16:30) — khung cuối sẽ tự rút ngắn cho vừa.
+const HOURS_BY_DOW = {
+  0: { open: 10, close: 16.5 }, // Chủ nhật: 10:00 - 16:30, ca cuối bắt đầu 16:00
+  1: { open: 10, close: 18 },
+  2: { open: 10, close: 18 },
+  3: { open: 10, close: 18 },
+  4: { open: 10, close: 18 },
+  5: { open: 10, close: 18 },
+  6: { open: 10, close: 18 }
+};
 
 // Luôn dùng giờ UK (tự động cộng/trừ giờ mùa hè BST), không phụ thuộc
 // múi giờ cấu hình của project Apps Script (Cài đặt dự án > Múi giờ).
 const TIMEZONE = "Europe/London";
-
-// Chủ nhật khai trương — mở đặc biệt dù các Chủ nhật khác đóng cửa
-const SPECIAL_OPEN_SUNDAY = "2026-08-23";
 
 const SALON_EMAIL = "glamnails1409@gmail.com";
 const SALON_NAME = "Glam Nails Sunderland";
@@ -130,11 +137,33 @@ function sortBookingsNow() {
   sortBookingsSheet_();
 }
 
-// Ngày đóng cửa: Chủ nhật, TRỪ ngày khai trương đặc biệt
+// Salon mở cửa tất cả các ngày trong tuần — chỉ đóng khi có trong
+// tab "Closed Dates".
 function isClosedDate_(dateStr) {
-  const dow = new Date(dateStr + "T00:00:00").getDay(); // 0 = Sunday
-  if (dow === 0 && dateStr !== SPECIAL_OPEN_SUNDAY) return true;
   return !!getClosedDatesSet_()[dateStr];
+}
+
+function dayOfWeek_(dateStr) {
+  return new Date(dateStr + "T00:00:00").getDay(); // 0 = Sunday ... 6 = Saturday
+}
+
+function formatHourLabel_(hourDecimal) {
+  const h = Math.floor(hourDecimal);
+  const m = Math.round((hourDecimal - h) * 60);
+  return pad_(h) + ":" + pad_(m);
+}
+
+// Danh sách nhãn khung giờ cho 1 ngày, dựa theo HOURS_BY_DOW. Khung cuối
+// tự rút ngắn nếu giờ đóng cửa lẻ (vd Chủ nhật đóng 16:30 -> khung cuối
+// "16:00 - 16:30" thay vì đủ 1 tiếng).
+function buildSlotLabels_(dateStr) {
+  const hours = HOURS_BY_DOW[dayOfWeek_(dateStr)];
+  const labels = [];
+  for (let h = hours.open; h < hours.close; h++) {
+    const end = Math.min(h + 1, hours.close);
+    labels.push(formatHourLabel_(h) + " - " + formatHourLabel_(end));
+  }
+  return labels;
 }
 
 // Tab "Closed Dates" — cho phép chủ salon tự đóng cửa 1 ngày bất kỳ
@@ -222,13 +251,12 @@ function doGet(e) {
   // "past" luôn tính theo giờ UK thật (Date.now() là mốc thời gian tuyệt đối,
   // không phụ thuộc múi giờ thiết bị khách) — không dựa vào đồng hồ trình duyệt.
   const nowMs = Date.now();
-  const slots = [];
-  for (let h = OPEN_HOUR; h < CLOSE_HOUR; h++) {
-    const label = pad_(h) + ":00 - " + pad_(h + 1) + ":00";
+  const slots = buildSlotLabels_(dateStr).map(function (label) {
+    const startHour = parseInt(label.split(":")[0], 10);
     const booked = counts[label] || 0;
-    const isPast = ukDateTime_(dateStr, h).getTime() < nowMs;
-    slots.push({ time: label, full: booked >= MAX_PER_SLOT, past: isPast });
-  }
+    const isPast = ukDateTime_(dateStr, startHour).getTime() < nowMs;
+    return { time: label, full: booked >= MAX_PER_SLOT, past: isPast };
+  });
 
   cache.put(cacheKey, JSON.stringify(slots), 20); // 20s TTL
 
@@ -262,8 +290,12 @@ function doPost(e) {
     return jsonOut_({ success: false, error: "Salon is closed on this date." });
   }
 
+  if (buildSlotLabels_(dateStr).indexOf(timeSlot) === -1) {
+    return jsonOut_({ success: false, error: "Invalid time slot for this date." });
+  }
+
   const startHourCheck = parseInt(timeSlot.split(":")[0], 10);
-  if (isNaN(startHourCheck) || ukDateTime_(dateStr, startHourCheck).getTime() < Date.now()) {
+  if (ukDateTime_(dateStr, startHourCheck).getTime() < Date.now()) {
     return jsonOut_({ success: false, error: "This time slot is in the past. Please choose another." });
   }
 
