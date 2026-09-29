@@ -64,6 +64,7 @@ function ensureHeader_() {
   const sheet = getSheet_();
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(SHEET_HEADERS);
+    ensureDateColumnIsText_();
     return;
   }
   // Sheet có sẵn dữ liệu từ trước khi có cột Services/Duration — bổ sung
@@ -73,6 +74,10 @@ function ensureHeader_() {
     const missing = SHEET_HEADERS.slice(existingHeader.length);
     sheet.getRange(1, existingHeader.length + 1, 1, missing.length).setValues([missing]);
   }
+  // Luôn ép lại định dạng cột Date thành text mỗi lần có request — phòng
+  // trường hợp định dạng bị Sheets/thao tác dán đè làm mất đi, gây đếm
+  // sai chỗ trống (đã từng xảy ra thật).
+  ensureDateColumnIsText_();
 }
 
 // Tính tổng thời lượng (phút) từ danh sách tên dịch vụ. Trả về -1 nếu có
@@ -628,9 +633,15 @@ function fixHistoricalTimezoneBug_(dryRun) {
    Helpers
    ========================================================= */
 function formatDateCell_(cellValue) {
-  // Sheet có thể lưu date dưới dạng Date object hoặc string — chuẩn hóa về YYYY-MM-DD
+  // Sheet có thể lưu date dưới dạng Date object hoặc string — chuẩn hóa về YYYY-MM-DD.
+  // Nếu Sheets đã tự nhận dạng ô này thành kiểu Date (bất chấp định dạng text ta
+  // ép), nó quy đổi chuỗi "yyyy-MM-dd" thành 1 mốc thời gian tuyệt đối bằng
+  // MÚI GIỜ RIÊNG CỦA SPREADSHEET (không phải TIMEZONE=UK ở trên) — nên phải
+  // "dịch ngược" bằng đúng múi giờ đó mới ra lại đúng ngày ban đầu; nếu lấy
+  // theo TIMEZONE (UK) sẽ có thể bị lệch sang ngày trước/sau.
   if (Object.prototype.toString.call(cellValue) === "[object Date]") {
-    return Utilities.formatDate(cellValue, TIMEZONE, "yyyy-MM-dd");
+    const sheetTz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    return Utilities.formatDate(cellValue, sheetTz, "yyyy-MM-dd");
   }
   return cellValue;
 }
