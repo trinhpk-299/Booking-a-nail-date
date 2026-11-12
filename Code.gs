@@ -40,8 +40,9 @@ const HOURS_OVERRIDES = [
   { from: "2027-01-02", to: "2027-01-02", open: 9, close: 18.5 }
 ];
 
-// Từ ngày này trở đi mỗi khung giờ chỉ nhận ít chỗ hơn (không có ngày kết thúc).
+// Trong khoảng ngày này (hết mùa lễ) mỗi khung giờ chỉ nhận ít chỗ hơn.
 const REDUCED_CAPACITY_FROM = "2026-12-20";
+const REDUCED_CAPACITY_TO = "2027-01-02";
 const REDUCED_MAX_PER_SLOT = 2;
 
 // Luôn dùng giờ UK (tự động cộng/trừ giờ mùa hè BST), không phụ thuộc
@@ -180,7 +181,8 @@ function getHoursForDate_(dateStr) {
 
 // Số chỗ tối đa mỗi khung giờ của 1 ngày.
 function maxPerSlot_(dateStr) {
-  return dateStr >= REDUCED_CAPACITY_FROM ? REDUCED_MAX_PER_SLOT : MAX_PER_SLOT;
+  const reduced = dateStr >= REDUCED_CAPACITY_FROM && dateStr <= REDUCED_CAPACITY_TO;
+  return reduced ? REDUCED_MAX_PER_SLOT : MAX_PER_SLOT;
 }
 
 function formatHourLabel_(hourDecimal) {

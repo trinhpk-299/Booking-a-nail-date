@@ -101,8 +101,9 @@ Việc này giúp script luôn ở trạng thái "ấm", nên hầu hết các l
   const MAX_PER_SLOT = 3;                         // số chỗ mỗi khung giờ
   const HOURS_BY_DOW = { ... };                   // giờ mở cửa theo thứ (CN 10:00-16:30, T2-T7 10:00-18:00)
   const HOURS_OVERRIDES = [ ... ];                // giờ riêng cho ngày/khoảng ngày cụ thể (mùa lễ cuối năm 2026)
-  const REDUCED_CAPACITY_FROM = "2026-12-20";     // từ ngày này mỗi khung chỉ nhận
-  const REDUCED_MAX_PER_SLOT = 2;                 // 2 chỗ (không có ngày kết thúc)
+  const REDUCED_CAPACITY_FROM = "2026-12-20";     // trong khoảng 20/12/2026 - 02/01/2027
+  const REDUCED_CAPACITY_TO = "2027-01-02";       // mỗi khung chỉ nhận
+  const REDUCED_MAX_PER_SLOT = 2;                 // 2 chỗ
   ```
   Salon mở tất cả các ngày. Ngày nghỉ cả ngày: thêm `{ from, to, closed: true }` vào `HOURS_OVERRIDES`, hoặc gõ ngày vào tab "Closed Dates" trong Sheet (không cần sửa code). Giờ mở cửa lẻ dùng số thập phân (8.5 = 08:30); khung giờ đầu tính từ giờ mở cửa, khung cuối tự rút ngắn cho vừa giờ đóng cửa.
 - **Nếu đổi tên tab Sheet** khác "Bookings", nhớ sửa lại trong `Code.gs` dòng `getSheetByName("Bookings")`.
