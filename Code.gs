@@ -722,7 +722,9 @@ function jsonOut_(obj) {
    do người duyệt đặt tay). Các bước chạy (trong Apps Script, chọn hàm rồi bấm Run):
      1. sendChristmasTest          — gửi 1 email thử tới chính hộp thư chạy script
      2. previewChristmasBatch      — xem log sẽ gửi cho ai (không gửi gì)
-     3. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent
+     3. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent.
+        Lần gửi thật đầu tiên tự "chốt" danh sách: chỉ gửi cho các email có trong tab
+        lúc đó, dòng thêm vào sau sẽ bị bỏ qua (freezeChristmasRecipients = chốt/chốt lại)
      4. setupChristmasTrigger      — đặt lịch tự chạy sendChristmasBatch mỗi ngày
         lúc 10h (giờ UK) cho tới khi gửi hết thì trigger tự xóa
    ========================================================= */
@@ -733,6 +735,66 @@ const XMAS_SENDER_NAME = "Jenny at Glam Nails";
 const XMAS_DAILY_LIMIT = 95;                   // tối đa mỗi lần chạy
 const XMAS_QUOTA_RESERVE = 5;                  // chừa lại cho email xác nhận đặt lịch của khách (cùng hạn mức ~100/ngày)
 const XMAS_MAX_RUN_MS = 270000;                // dừng trước giới hạn 6 phút của Apps Script
+const XMAS_RECIPIENTS_KEY = "XMAS_RECIPIENTS"; // danh sách email đã "chốt", lưu trong Script Properties
+const XMAS_PROP_CHUNK = 8000;                  // mỗi property tối đa ~9KB nên chia nhỏ khi lưu
+
+// Danh sách email được phép nhận được "chốt" ở lần gửi thật đầu tiên (hoặc khi
+// chạy freezeChristmasRecipients). Từ đó chỉ gửi cho đúng các email này — dòng
+// nào thêm vào tab sau thời điểm chốt sẽ bị bỏ qua.
+function saveXmasRecipients_(emails) {
+  const props = PropertiesService.getScriptProperties();
+  const old = parseInt(props.getProperty(XMAS_RECIPIENTS_KEY + "_n") || "0", 10);
+  for (let i = 0; i < old; i++) props.deleteProperty(XMAS_RECIPIENTS_KEY + "_" + i);
+  const json = JSON.stringify(emails);
+  const n = Math.ceil(json.length / XMAS_PROP_CHUNK);
+  for (let i = 0; i < n; i++) {
+    props.setProperty(XMAS_RECIPIENTS_KEY + "_" + i, json.substr(i * XMAS_PROP_CHUNK, XMAS_PROP_CHUNK));
+  }
+  props.setProperty(XMAS_RECIPIENTS_KEY + "_n", String(n));
+}
+
+// Mảng email đã chốt, hoặc null nếu chưa chốt lần nào.
+function loadXmasRecipients_() {
+  const props = PropertiesService.getScriptProperties();
+  const n = props.getProperty(XMAS_RECIPIENTS_KEY + "_n");
+  if (n === null) return null;
+  let json = "";
+  for (let i = 0; i < parseInt(n, 10); i++) json += props.getProperty(XMAS_RECIPIENTS_KEY + "_" + i);
+  return JSON.parse(json || "[]");
+}
+
+function freezeXmasPending_(pending) {
+  const seen = {};
+  const emails = [];
+  pending.forEach(function (p) {
+    if (!seen[p.email]) { seen[p.email] = true; emails.push(p.email); }
+  });
+  saveXmasRecipients_(emails);
+  return emails.length;
+}
+
+// Chốt (hoặc chốt lại) danh sách = các dòng đang Status = SEND, Sent trống, ngay lúc này.
+function freezeChristmasRecipients() {
+  const n = freezeXmasPending_(readXmasPending_(readXmasList_()).pending);
+  Logger.log("Đã chốt danh sách: " + n + " email. Email thêm vào tab sau lúc này sẽ KHÔNG được gửi (muốn thêm thì chạy lại freezeChristmasRecipients).");
+}
+
+// Các dòng cần gửi: Status = SEND, Sent trống, có email; kèm tập email đã gửi rồi.
+function readXmasPending_(list) {
+  const col = list.col;
+  const sentEmails = {};
+  const pending = [];
+  for (let r = 1; r < list.values.length; r++) {
+    const row = list.values[r];
+    const email = String(row[col["Email"]]).trim().toLowerCase();
+    const sent = String(row[col["Sent"]]).trim();
+    if (sent && email) sentEmails[email] = true;
+    if (sent || !email) continue;
+    if (String(row[col["Status"]]).trim().toUpperCase() !== "SEND") continue;
+    pending.push({ rowNum: r + 1, email: email, firstName: String(row[col["First Name"]]).trim() });
+  }
+  return { pending: pending, sentEmails: sentEmails };
+}
 
 function readXmasList_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(XMAS_SHEET_NAME);
@@ -805,16 +867,23 @@ function sendChristmasBatch_(dryRun) {
     const list = readXmasList_();
     const col = list.col;
 
-    const sentEmails = {};
-    const pending = [];
-    for (let r = 1; r < list.values.length; r++) {
-      const row = list.values[r];
-      const email = String(row[col["Email"]]).trim().toLowerCase();
-      const sent = String(row[col["Sent"]]).trim();
-      if (sent && email) sentEmails[email] = true;
-      if (sent || !email) continue;
-      if (String(row[col["Status"]]).trim().toUpperCase() !== "SEND") continue;
-      pending.push({ rowNum: r + 1, email: email, firstName: String(row[col["First Name"]]).trim() });
+    const read = readXmasPending_(list);
+    const sentEmails = read.sentEmails;
+    let pending = read.pending;
+
+    // Chỉ gửi cho danh sách đã chốt; email thêm vào tab sau đó bị bỏ qua.
+    const frozen = loadXmasRecipients_();
+    if (frozen) {
+      const allowed = {};
+      frozen.forEach(function (e) { allowed[e] = true; });
+      const ignored = pending.filter(function (p) { return !allowed[p.email]; });
+      pending = pending.filter(function (p) { return allowed[p.email]; });
+      if (ignored.length) {
+        Logger.log("Bỏ qua " + ignored.length + " email thêm vào sau khi chốt danh sách: " +
+          ignored.slice(0, 10).map(function (p) { return p.email; }).join(", ") + (ignored.length > 10 ? ", ..." : ""));
+      }
+    } else if (dryRun) {
+      Logger.log("[XEM TRƯỚC] Chưa chốt danh sách — lần gửi thật đầu tiên sẽ tự chốt " + pending.length + " dòng hiện có.");
     }
 
     if (!pending.length) {
@@ -829,6 +898,10 @@ function sendChristmasBatch_(dryRun) {
     const limit = Math.max(0, Math.min(XMAS_DAILY_LIMIT, quotaLeft - XMAS_QUOTA_RESERVE));
     Logger.log("Cần gửi " + pending.length + " khách; hạn mức MailApp còn " + quotaLeft + " -> lần này gửi tối đa " + limit + ".");
     if (!limit) return;
+
+    if (!frozen && !dryRun) {
+      Logger.log("Đã chốt danh sách: " + freezeXmasPending_(pending) + " email — email thêm vào tab sau lúc này sẽ không được gửi.");
+    }
 
     const startedAt = Date.now();
     let sent = 0, failed = 0, dup = 0;
