@@ -718,20 +718,18 @@ function jsonOut_(obj) {
 /* =========================================================
    CHIẾN DỊCH EMAIL GIÁNG SINH
    Danh sách khách nằm ở tab "Xmas Email List" (import từ Xmas_Email_List.csv)
-   cùng Spreadsheet với tab Bookings. Các bước chạy (trong Apps Script, chọn
-   hàm rồi bấm Run):
-     1. previewCancelledCustomers  — xem log khách nào đã hủy lịch (không sửa gì)
-     2. applyCancelledCustomers    — ghi EXCLUDE/CHECK + ghi chú vào tab Xmas Email List
-     3. previewChristmasBatch      — xem log sẽ gửi cho ai (không gửi gì)
-     4. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent
-     5. setupChristmasTrigger      — đặt lịch tự chạy sendChristmasBatch mỗi ngày
+   cùng Spreadsheet với tab Bookings. Chỉ gửi cho dòng Status = SEND (CHECK/EXCLUDE
+   do người duyệt đặt tay). Các bước chạy (trong Apps Script, chọn hàm rồi bấm Run):
+     1. previewChristmasBatch      — xem log sẽ gửi cho ai (không gửi gì)
+     2. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent
+     3. setupChristmasTrigger      — đặt lịch tự chạy sendChristmasBatch mỗi ngày
         lúc 10h (giờ UK) cho tới khi gửi hết thì trigger tự xóa
    ========================================================= */
 const XMAS_SHEET_NAME = "Xmas Email List";
 const XMAS_TEMPLATE_NAME = "ChristmasEmail";   // file HTML trong project Apps Script
 const XMAS_GIF_FILE_ID = "GIF_FILE_ID";        // ID file christmas_header.gif trên Google Drive
 const XMAS_SENDER_NAME = "Jenny at Glam Nails";
-const XMAS_SUBJECT_EMOJI = "🎄";     // viết dạng escape vì ghi trực tiếp emoji dễ lỗi font
+const XMAS_SUBJECT_EMOJI = "\uD83C\uDF84";     // viết dạng escape vì ghi trực tiếp emoji dễ lỗi font
 const XMAS_DAILY_LIMIT = 95;                   // tối đa mỗi lần chạy
 const XMAS_QUOTA_RESERVE = 5;                  // chừa lại cho email xác nhận đặt lịch của khách (cùng hạn mức ~100/ngày)
 const XMAS_MAX_RUN_MS = 270000;                // dừng trước giới hạn 6 phút của Apps Script
@@ -744,7 +742,7 @@ function readXmasList_() {
   const values = sheet.getDataRange().getValues();
   const header = values[0].map(function (h) { return String(h).trim(); });
   const col = {};
-  ["First Name", "Email", "Status", "Note", "Sent"].forEach(function (name) {
+  ["First Name", "Email", "Status", "Sent"].forEach(function (name) {
     const i = header.indexOf(name);
     if (i === -1) throw new Error('Tab "' + XMAS_SHEET_NAME + '" thiếu cột "' + name + '".');
     col[name] = i;
@@ -754,93 +752,6 @@ function readXmasList_() {
 
 function escapeHtml_(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-// true = event còn trên Calendar, false = đã bị xóa, null = không xác định được
-// (lỗi tạm thời — không được coi là đã hủy).
-function checkEventExists_(calendar, eventId) {
-  try {
-    return calendar.getEventById(eventId) ? true : false;
-  } catch (err) {
-    return null;
-  }
-}
-
-function previewCancelledCustomers() { filterCancelledXmasCustomers_(true); }
-function applyCancelledCustomers() { filterCancelledXmasCustomers_(false); }
-
-// Khách "đã hủy lịch" = hủy bằng cách xóa event trên Calendar (kiểm tra qua cột
-// Calendar Event ID trong tab Bookings):
-//  - TẤT CẢ lịch kiểm tra được của khách đều đã bị xóa  -> Status = EXCLUDE
-//  - chỉ MỘT PHẦN lịch bị xóa (khách vẫn còn lịch khác) -> giữ SEND, chỉ ghi chú
-//  - email không còn dòng nào trong Bookings (dòng đã bị xóa khi hủy, hoặc
-//    email đã được sửa tay) -> Status = CHECK để người duyệt quyết định
-// Chỉ xử lý dòng đang SEND và chưa gửi. Chạy lại nhiều lần vẫn an toàn.
-function filterCancelledXmasCustomers_(dryRun) {
-  const list = readXmasList_();
-  const col = list.col;
-
-  const bookings = getSheet_().getDataRange().getValues();
-  const byEmail = {};
-  for (let i = 1; i < bookings.length; i++) {
-    const email = String(bookings[i][5] || "").trim().toLowerCase();   // cột Email
-    if (!email) continue;
-    (byEmail[email] = byEmail[email] || []).push({
-      date: formatDateCell_(bookings[i][1]),
-      eventId: String(bookings[i][7] || "").trim()                      // cột Calendar Event ID
-    });
-  }
-
-  const calendar = CalendarApp.getCalendarById(SALON_EMAIL) || CalendarApp.getDefaultCalendar();
-  const exists = {};
-  let excluded = 0, toCheck = 0, partial = 0, untouched = 0;
-
-  for (let r = 1; r < list.values.length; r++) {
-    const row = list.values[r];
-    if (String(row[col["Status"]]).trim().toUpperCase() !== "SEND") continue;
-    if (String(row[col["Sent"]]).trim()) continue;
-
-    const email = String(row[col["Email"]]).trim().toLowerCase();
-    const found = byEmail[email];
-    let newStatus = null;
-    let noteAdd = "";
-
-    if (!found) {
-      newStatus = "CHECK";
-      noteAdd = "Không thấy email này trong tab Bookings (dòng đã bị xóa khi hủy, hoặc email đã sửa tay)";
-    } else {
-      let checked = 0;
-      const cancelledDates = [];
-      found.forEach(function (b) {
-        if (!b.eventId || b.eventId.indexOf("calendar_error") === 0) return;
-        if (!(b.eventId in exists)) exists[b.eventId] = checkEventExists_(calendar, b.eventId);
-        if (exists[b.eventId] === null) return;
-        checked++;
-        if (exists[b.eventId] === false) cancelledDates.push(b.date);
-      });
-      if (checked > 0 && cancelledDates.length === checked) {
-        newStatus = "EXCLUDE";
-        noteAdd = "Đã hủy lịch (event Calendar đã bị xóa): " + cancelledDates.join(", ");
-      } else if (cancelledDates.length > 0) {
-        noteAdd = "Có " + cancelledDates.length + "/" + checked + " lịch đã hủy (" + cancelledDates.join(", ") + ") nhưng khách còn lịch khác — giữ SEND";
-      }
-    }
-
-    if (!newStatus && !noteAdd) { untouched++; continue; }
-    if (newStatus === "EXCLUDE") excluded++; else if (newStatus === "CHECK") toCheck++; else partial++;
-
-    Logger.log("Dòng " + (r + 1) + " " + email + ": " + (newStatus ? "-> " + newStatus + " | " : "giữ SEND | ") + noteAdd);
-    if (dryRun) continue;
-    if (newStatus) list.sheet.getRange(r + 1, col["Status"] + 1).setValue(newStatus);
-    const oldNote = String(row[col["Note"]] || "").trim();
-    if (oldNote.indexOf(noteAdd) === -1) {
-      list.sheet.getRange(r + 1, col["Note"] + 1).setValue(oldNote ? oldNote + " | " + noteAdd : noteAdd);
-    }
-  }
-
-  Logger.log((dryRun ? "[XEM TRƯỚC — chưa sửa gì] " : "[ĐÃ GHI] ") +
-    excluded + " khách -> EXCLUDE, " + toCheck + " khách -> CHECK, " + partial + " khách chỉ ghi chú (hủy một phần), " +
-    untouched + " khách không đổi.");
 }
 
 function previewChristmasBatch() { sendChristmasBatch_(true); }
