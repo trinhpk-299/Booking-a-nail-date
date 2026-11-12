@@ -730,7 +730,6 @@ const XMAS_SHEET_NAME = "Xmas Email List";
 const XMAS_TEMPLATE_NAME = "christmas_email";  // tên file HTML trong project Apps Script (không gồm .html)
 const XMAS_GIF_FILE_ID = "GIF_FILE_ID";        // ID file christmas_header.gif trên Google Drive
 const XMAS_SENDER_NAME = "Jenny at Glam Nails";
-const XMAS_SUBJECT_EMOJI = "\uD83C\uDF84";     // viết dạng escape vì ghi trực tiếp emoji dễ lỗi font
 const XMAS_DAILY_LIMIT = 95;                   // tối đa mỗi lần chạy
 const XMAS_QUOTA_RESERVE = 5;                  // chừa lại cho email xác nhận đặt lịch của khách (cùng hạn mức ~100/ngày)
 const XMAS_MAX_RUN_MS = 270000;                // dừng trước giới hạn 6 phút của Apps Script
@@ -774,7 +773,7 @@ function sendXmasEmail_(to, name, assets) {
     .replace("{HEADER_IMG}", "cid:snowHeader");
   MailApp.sendEmail({
     to: to,
-    subject: name + ", first dibs on our Christmas appointments " + XMAS_SUBJECT_EMOJI,
+    subject: name + ", you get first pick of our Christmas slots",
     htmlBody: html,
     inlineImages: { snowHeader: assets.gif },
     name: XMAS_SENDER_NAME
