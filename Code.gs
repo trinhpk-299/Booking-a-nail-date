@@ -28,6 +28,22 @@ const HOURS_BY_DOW = {
   6: { open: 10, close: 18 }
 };
 
+// Giờ mở cửa riêng cho các ngày/khoảng ngày cụ thể — ưu tiên hơn HOURS_BY_DOW.
+// Mùa lễ cuối năm 2026. "closed: true" = nghỉ cả ngày. Giờ lẻ dùng số thập phân
+// (8.5 = 08:30). Khung đầu tính từ giờ mở cửa, khung cuối tự rút ngắn cho vừa.
+const HOURS_OVERRIDES = [
+  { from: "2026-12-14", to: "2026-12-23", open: 8.5, close: 20 },
+  { from: "2026-12-24", to: "2026-12-24", open: 8.5, close: 17 },   // Christmas Eve
+  { from: "2026-12-25", to: "2026-12-26", closed: true },
+  { from: "2026-12-27", to: "2026-12-31", open: 9, close: 18.5 },
+  { from: "2027-01-01", to: "2027-01-01", closed: true },           // New Year's Day
+  { from: "2027-01-02", to: "2027-01-02", open: 9, close: 18.5 }
+];
+
+// Từ ngày này trở đi mỗi khung giờ chỉ nhận ít chỗ hơn (không có ngày kết thúc).
+const REDUCED_CAPACITY_FROM = "2026-12-20";
+const REDUCED_MAX_PER_SLOT = 2;
+
 // Luôn dùng giờ UK (tự động cộng/trừ giờ mùa hè BST), không phụ thuộc
 // múi giờ cấu hình của project Apps Script (Cài đặt dự án > Múi giờ).
 const TIMEZONE = "Europe/London";
@@ -142,14 +158,29 @@ function sortBookingsNow() {
   sortBookingsSheet_();
 }
 
-// Salon mở cửa tất cả các ngày trong tuần — chỉ đóng khi có trong
-// tab "Closed Dates".
+// Salon mở cửa tất cả các ngày trong tuần — chỉ đóng khi là ngày nghỉ trong
+// HOURS_OVERRIDES hoặc có trong tab "Closed Dates".
 function isClosedDate_(dateStr) {
+  if (getHoursForDate_(dateStr).closed) return true;
   return !!getClosedDatesSet_()[dateStr];
 }
 
 function dayOfWeek_(dateStr) {
   return new Date(dateStr + "T00:00:00").getDay(); // 0 = Sunday ... 6 = Saturday
+}
+
+// Giờ mở cửa của 1 ngày: ưu tiên HOURS_OVERRIDES, nếu không có thì theo thứ.
+function getHoursForDate_(dateStr) {
+  for (let i = 0; i < HOURS_OVERRIDES.length; i++) {
+    const o = HOURS_OVERRIDES[i];
+    if (dateStr >= o.from && dateStr <= o.to) return o;
+  }
+  return HOURS_BY_DOW[dayOfWeek_(dateStr)];
+}
+
+// Số chỗ tối đa mỗi khung giờ của 1 ngày.
+function maxPerSlot_(dateStr) {
+  return dateStr >= REDUCED_CAPACITY_FROM ? REDUCED_MAX_PER_SLOT : MAX_PER_SLOT;
 }
 
 function formatHourLabel_(hourDecimal) {
@@ -158,17 +189,41 @@ function formatHourLabel_(hourDecimal) {
   return pad_(h) + ":" + pad_(m);
 }
 
-// Danh sách nhãn khung giờ cho 1 ngày, dựa theo HOURS_BY_DOW. Khung cuối
-// tự rút ngắn nếu giờ đóng cửa lẻ (vd Chủ nhật đóng 16:30 -> khung cuối
-// "16:00 - 16:30" thay vì đủ 1 tiếng).
+// "08:30 - 09:30" -> 8.5 (giờ bắt đầu) / 9.5 (giờ kết thúc), dạng thập phân.
+function slotStartHour_(label) {
+  const p = String(label).split(" - ")[0].split(":");
+  return parseInt(p[0], 10) + parseInt(p[1], 10) / 60;
+}
+
+function slotEndHour_(label) {
+  const p = String(label).split(" - ")[1].split(":");
+  return parseInt(p[0], 10) + parseInt(p[1], 10) / 60;
+}
+
+// Danh sách nhãn khung giờ cho 1 ngày. Khung đầu bắt đầu đúng giờ mở cửa,
+// khung cuối tự rút ngắn nếu giờ đóng cửa lệch (vd Chủ nhật đóng 16:30 ->
+// khung cuối "16:00 - 16:30" thay vì đủ 1 tiếng).
 function buildSlotLabels_(dateStr) {
-  const hours = HOURS_BY_DOW[dayOfWeek_(dateStr)];
+  const hours = getHoursForDate_(dateStr);
   const labels = [];
+  if (hours.closed) return labels;
   for (let h = hours.open; h < hours.close; h++) {
     const end = Math.min(h + 1, hours.close);
     labels.push(formatHourLabel_(h) + " - " + formatHourLabel_(end));
   }
   return labels;
+}
+
+// Khung giờ của ngày đó chứa mốc giờ (thập phân) cho trước, hoặc null nếu
+// mốc đó nằm ngoài giờ mở cửa.
+function slotLabelForTime_(dateStr, hourDecimal) {
+  const labels = buildSlotLabels_(dateStr);
+  for (let i = 0; i < labels.length; i++) {
+    if (hourDecimal >= slotStartHour_(labels[i]) && hourDecimal < slotEndHour_(labels[i])) {
+      return labels[i];
+    }
+  }
+  return null;
 }
 
 // Tab "Closed Dates" — cho phép chủ salon tự đóng cửa 1 ngày bất kỳ
@@ -209,8 +264,9 @@ function pad_(n) {
 
 // Đọc 1 mốc ngày+giờ theo đúng giờ UK (tự xử lý BST/GMT), bất kể múi giờ
 // cấu hình của project là gì.
+// "hour" có thể là số thập phân (8.5 = 08:30).
 function ukDateTime_(dateStr, hour) {
-  const wallClock = dateStr + " " + pad_(hour) + ":00:00";
+  const wallClock = dateStr + " " + formatHourLabel_(hour) + ":00";
   return Utilities.parseDate(wallClock, TIMEZONE, "yyyy-MM-dd HH:mm:ss");
 }
 
@@ -256,11 +312,11 @@ function doGet(e) {
   // "past" luôn tính theo giờ UK thật (Date.now() là mốc thời gian tuyệt đối,
   // không phụ thuộc múi giờ thiết bị khách) — không dựa vào đồng hồ trình duyệt.
   const nowMs = Date.now();
+  const maxPerSlot = maxPerSlot_(dateStr);
   const slots = buildSlotLabels_(dateStr).map(function (label) {
-    const startHour = parseInt(label.split(":")[0], 10);
     const booked = counts[label] || 0;
-    const isPast = ukDateTime_(dateStr, startHour).getTime() < nowMs;
-    return { time: label, full: booked >= MAX_PER_SLOT, past: isPast };
+    const isPast = ukDateTime_(dateStr, slotStartHour_(label)).getTime() < nowMs;
+    return { time: label, full: booked >= maxPerSlot, past: isPast };
   });
 
   cache.put(cacheKey, JSON.stringify(slots), 20); // 20s TTL
@@ -299,8 +355,7 @@ function doPost(e) {
     return jsonOut_({ success: false, error: "Invalid time slot for this date." });
   }
 
-  const startHourCheck = parseInt(timeSlot.split(":")[0], 10);
-  if (ukDateTime_(dateStr, startHourCheck).getTime() < Date.now()) {
+  if (ukDateTime_(dateStr, slotStartHour_(timeSlot)).getTime() < Date.now()) {
     return jsonOut_({ success: false, error: "This time slot is in the past. Please choose another." });
   }
 
@@ -314,7 +369,7 @@ function doPost(e) {
     for (let i = 1; i < data.length; i++) {
       if (formatDateCell_(data[i][1]) === dateStr && data[i][2] === timeSlot) count++;
     }
-    if (count >= MAX_PER_SLOT) {
+    if (count >= maxPerSlot_(dateStr)) {
       return jsonOut_({ success: false, error: "This time slot just filled up. Please choose another." });
     }
 
@@ -347,8 +402,7 @@ function doPost(e) {
 function createCalendarEvent_(dateStr, timeSlot, name, phone, email, notes, servicesList, durationMinutes) {
   const calendar = CalendarApp.getCalendarById(SALON_EMAIL) || CalendarApp.getDefaultCalendar();
 
-  const startHour = parseInt(timeSlot.split(":")[0], 10);
-  const start = ukDateTime_(dateStr, startHour);
+  const start = ukDateTime_(dateStr, slotStartHour_(timeSlot));
   const end = new Date(start.getTime() + durationMinutes * 60000);
 
   const title = "Nail Appointment — " + name;
@@ -438,7 +492,11 @@ function syncManualCalendarEntries() {
     const start = event.getStartTime();
     const dateStr = Utilities.formatDate(start, TIMEZONE, "yyyy-MM-dd");
     const hour = parseInt(Utilities.formatDate(start, TIMEZONE, "H"), 10);
-    const timeSlot = pad_(hour) + ":00 - " + pad_(hour + 1) + ":00";
+    const minute = parseInt(Utilities.formatDate(start, TIMEZONE, "m"), 10);
+    // Gán vào đúng khung giờ của ngày đó (khung có thể lệch 30 phút vào mùa lễ);
+    // nếu sự kiện nằm ngoài giờ mở cửa thì giữ nhãn theo giờ tròn như trước.
+    const timeSlot = slotLabelForTime_(dateStr, hour + minute / 60) ||
+      (pad_(hour) + ":00 - " + pad_(hour + 1) + ":00");
 
     const guests = event.getGuestList();
     const guestEmail = guests.length > 0 ? guests[0].getEmail() : "";
@@ -490,7 +548,7 @@ function formatPastBookings_() {
     const timeSlot = dateTimeValues[i][1];
     let isPast = false;
     if (dateStr && timeSlot) {
-      const startHour = parseInt(String(timeSlot).split(":")[0], 10);
+      const startHour = slotStartHour_(timeSlot);
       if (!isNaN(startHour)) {
         isPast = ukDateTime_(dateStr, startHour).getTime() < now;
       }
@@ -602,8 +660,7 @@ function fixHistoricalTimezoneBug_(dryRun) {
       }
     } else {
       if (!dateStr || !timeSlot) { skipped++; continue; }
-      const startHour = parseInt(timeSlot.split(":")[0], 10);
-      const correctStart = ukDateTime_(dateStr, startHour);
+      const correctStart = ukDateTime_(dateStr, slotStartHour_(timeSlot));
       const correctEnd = new Date(correctStart.getTime() + SLOT_MINUTES * 60000);
       const actualStart = event.getStartTime();
 

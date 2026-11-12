@@ -98,15 +98,17 @@ Việc này giúp script luôn ở trạng thái "ấm", nên hầu hết các l
 - **Giới hạn Gmail gửi mail**: tài khoản Gmail thường (không phải Workspace) giới hạn ~100 email/ngày qua Apps Script. Với quy mô salon nhỏ thì thoải mái.
 - **Giờ hoạt động & business rules hiện tại** — chỉnh trong `Code.gs`, đầu file, phần `CẤU HÌNH`:
   ```js
-  const MAX_PER_SLOT = 5;
-  const OPEN_HOUR = 10;
-  const CLOSE_HOUR = 18;
-  const SPECIAL_OPEN_SUNDAY = "2026-08-23"; // Chủ nhật khai trương duy nhất được mở
+  const MAX_PER_SLOT = 3;                         // số chỗ mỗi khung giờ
+  const HOURS_BY_DOW = { ... };                   // giờ mở cửa theo thứ (CN 10:00-16:30, T2-T7 10:00-18:00)
+  const HOURS_OVERRIDES = [ ... ];                // giờ riêng cho ngày/khoảng ngày cụ thể (mùa lễ cuối năm 2026)
+  const REDUCED_CAPACITY_FROM = "2026-12-20";     // từ ngày này mỗi khung chỉ nhận
+  const REDUCED_MAX_PER_SLOT = 2;                 // 2 chỗ (không có ngày kết thúc)
   ```
-  Các Chủ nhật khác mặc định đóng cửa. Muốn mở thêm Chủ nhật nào, cần sửa logic `isClosedDate_()` (hiện chỉ cho phép 1 ngày ngoại lệ).
+  Salon mở tất cả các ngày. Ngày nghỉ cả ngày: thêm `{ from, to, closed: true }` vào `HOURS_OVERRIDES`, hoặc gõ ngày vào tab "Closed Dates" trong Sheet (không cần sửa code). Giờ mở cửa lẻ dùng số thập phân (8.5 = 08:30); khung giờ đầu tính từ giờ mở cửa, khung cuối tự rút ngắn cho vừa giờ đóng cửa.
 - **Nếu đổi tên tab Sheet** khác "Bookings", nhớ sửa lại trong `Code.gs` dòng `getSheetByName("Bookings")`.
 - **Đồng bộ Calendar**: script tạo sự kiện trên Calendar gắn với `glamnails1409@gmail.com`. Nếu muốn dùng Calendar khác (ví dụ Calendar riêng cho Sunderland), đổi `SALON_EMAIL` hoặc dùng ID Calendar cụ thể trong hàm `createCalendarEvent_()`.
-- **Frontend cũng cần đồng bộ business rules**: `index.html` có riêng các hằng số `MAX_PER_SLOT`, `OPEN_HOUR`, `CLOSE_HOUR`, `SPECIAL_OPEN_SUNDAY` — nếu đổi ở `Code.gs` thì nhớ đổi y hệt trong `index.html` để giao diện và backend luôn khớp nhau.
+- **Giờ mở cửa/số chỗ do server (`Code.gs`) quyết định**: web lấy danh sách khung giờ, trạng thái đầy/đã qua/đóng cửa trực tiếp từ server nên chỉ cần sửa `Code.gs` rồi deploy lại. Các hằng số cùng tên trong `index.html` chỉ dùng cho chế độ demo (`USE_LIVE_BACKEND = false`).
+- **Hiệu ứng tuyết rơi** (`index.html`, hằng số `SNOW_UNTIL`): tự chạy đến hết 31/12/2026 theo ngày UK rồi tự tắt, không cần sửa gì thêm.
 - Nếu muốn thêm dropdown chọn dịch vụ (Manicure/Pedicure/Gel...) sau này, nói mình biết — sẽ chỉnh cả form, Sheet và Calendar event.
 - **Múi giờ**: code luôn tính giờ theo UK (`Europe/London`, tự động cộng/trừ giờ mùa hè BST) qua hằng số `TIMEZONE` trong `Code.gs`, không phụ thuộc múi giờ cấu hình của project Apps Script hay của Google Sheet nữa. Những dòng đã lỡ ghi sai giờ vào Sheet **trước khi có bản fix này** (ví dụ các dòng sync từ Calendar bị lệch giờ) sẽ không tự sửa lại — cần bạn kiểm tra và sửa tay cột "Time Slot"/"Date" cho các dòng cũ đó nếu cần.
 
