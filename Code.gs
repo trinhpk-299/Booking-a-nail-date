@@ -720,13 +720,14 @@ function jsonOut_(obj) {
    Danh sách khách nằm ở tab "Xmas Email List" (import từ Xmas_Email_List.csv)
    cùng Spreadsheet với tab Bookings. Chỉ gửi cho dòng Status = SEND (CHECK/EXCLUDE
    do người duyệt đặt tay). Các bước chạy (trong Apps Script, chọn hàm rồi bấm Run):
-     1. previewChristmasBatch      — xem log sẽ gửi cho ai (không gửi gì)
-     2. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent
-     3. setupChristmasTrigger      — đặt lịch tự chạy sendChristmasBatch mỗi ngày
+     1. sendChristmasTest          — gửi 1 email thử tới chính hộp thư chạy script
+     2. previewChristmasBatch      — xem log sẽ gửi cho ai (không gửi gì)
+     3. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent
+     4. setupChristmasTrigger      — đặt lịch tự chạy sendChristmasBatch mỗi ngày
         lúc 10h (giờ UK) cho tới khi gửi hết thì trigger tự xóa
    ========================================================= */
 const XMAS_SHEET_NAME = "Xmas Email List";
-const XMAS_TEMPLATE_NAME = "ChristmasEmail";   // file HTML trong project Apps Script
+const XMAS_TEMPLATE_NAME = "christmas_email";  // tên file HTML trong project Apps Script (không gồm .html)
 const XMAS_GIF_FILE_ID = "GIF_FILE_ID";        // ID file christmas_header.gif trên Google Drive
 const XMAS_SENDER_NAME = "Jenny at Glam Nails";
 const XMAS_SUBJECT_EMOJI = "\uD83C\uDF84";     // viết dạng escape vì ghi trực tiếp emoji dễ lỗi font
@@ -752,6 +753,41 @@ function readXmasList_() {
 
 function escapeHtml_(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Đọc template HTML + ảnh GIF header; báo lỗi rõ ràng nếu chưa cấu hình đủ.
+function loadXmasAssets_() {
+  if (!XMAS_GIF_FILE_ID || XMAS_GIF_FILE_ID === "GIF_FILE_ID") {
+    throw new Error("Chưa điền XMAS_GIF_FILE_ID (ID file christmas_header.gif trên Google Drive).");
+  }
+  const template = HtmlService.createHtmlOutputFromFile(XMAS_TEMPLATE_NAME).getContent();
+  if (template.indexOf("{First name}") === -1 || template.indexOf("{HEADER_IMG}") === -1) {
+    throw new Error('File HTML "' + XMAS_TEMPLATE_NAME + '" thiếu {First name} hoặc {HEADER_IMG}.');
+  }
+  return { template: template, gif: DriveApp.getFileById(XMAS_GIF_FILE_ID).getBlob() };
+}
+
+function sendXmasEmail_(to, name, assets) {
+  const safeName = escapeHtml_(name);
+  const html = assets.template
+    .replace(/\{First name\}/g, function () { return safeName; })
+    .replace("{HEADER_IMG}", "cid:snowHeader");
+  MailApp.sendEmail({
+    to: to,
+    subject: name + ", first dibs on our Christmas appointments " + XMAS_SUBJECT_EMOJI,
+    htmlBody: html,
+    inlineImages: { snowHeader: assets.gif },
+    name: XMAS_SENDER_NAME
+  });
+}
+
+// Gửi 1 email thử (đúng template + GIF) tới hộp thư của tài khoản đang chạy
+// script (glamnails1409@gmail.com) để xem trước khi gửi hàng loạt. Không đụng
+// tới tab Xmas Email List.
+function sendChristmasTest() {
+  const to = Session.getEffectiveUser().getEmail();
+  sendXmasEmail_(to, "Test", loadXmasAssets_());
+  Logger.log("Đã gửi email thử tới " + to + " — kiểm tra hộp thư (cả mục Spam) rồi mới chạy sendChristmasBatch.");
 }
 
 function previewChristmasBatch() { sendChristmasBatch_(true); }
@@ -788,14 +824,7 @@ function sendChristmasBatch_(dryRun) {
       return;
     }
 
-    if (!XMAS_GIF_FILE_ID || XMAS_GIF_FILE_ID === "GIF_FILE_ID") {
-      throw new Error("Chưa điền XMAS_GIF_FILE_ID (ID file christmas_header.gif trên Google Drive).");
-    }
-    const template = HtmlService.createHtmlOutputFromFile(XMAS_TEMPLATE_NAME).getContent();
-    if (template.indexOf("{First name}") === -1 || template.indexOf("{HEADER_IMG}") === -1) {
-      throw new Error('File HTML "' + XMAS_TEMPLATE_NAME + '" thiếu {First name} hoặc {HEADER_IMG}.');
-    }
-    const gif = DriveApp.getFileById(XMAS_GIF_FILE_ID).getBlob();
+    const assets = loadXmasAssets_();
 
     const quotaLeft = MailApp.getRemainingDailyQuota();
     const limit = Math.max(0, Math.min(XMAS_DAILY_LIMIT, quotaLeft - XMAS_QUOTA_RESERVE));
@@ -827,18 +856,8 @@ function sendChristmasBatch_(dryRun) {
         continue;
       }
 
-      const safeName = escapeHtml_(name);
-      const html = template
-        .replace(/\{First name\}/g, function () { return safeName; })
-        .replace("{HEADER_IMG}", "cid:snowHeader");
       try {
-        MailApp.sendEmail({
-          to: p.email,
-          subject: name + ", first dibs on our Christmas appointments " + XMAS_SUBJECT_EMOJI,
-          htmlBody: html,
-          inlineImages: { snowHeader: gif },
-          name: XMAS_SENDER_NAME
-        });
+        sendXmasEmail_(p.email, name, assets);
         sentCell.setValue(Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd HH:mm"));
         SpreadsheetApp.flush();
         sentEmails[p.email] = true;
