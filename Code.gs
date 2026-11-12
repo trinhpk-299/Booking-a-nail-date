@@ -714,3 +714,266 @@ function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+/* =========================================================
+   CHIẾN DỊCH EMAIL GIÁNG SINH
+   Danh sách khách nằm ở tab "Xmas Email List" (import từ Xmas_Email_List.csv)
+   cùng Spreadsheet với tab Bookings. Các bước chạy (trong Apps Script, chọn
+   hàm rồi bấm Run):
+     1. previewCancelledCustomers  — xem log khách nào đã hủy lịch (không sửa gì)
+     2. applyCancelledCustomers    — ghi EXCLUDE/CHECK + ghi chú vào tab Xmas Email List
+     3. previewChristmasBatch      — xem log sẽ gửi cho ai (không gửi gì)
+     4. sendChristmasBatch         — gửi thật (tối đa ~95 email/lần), ghi giờ gửi vào cột Sent
+     5. setupChristmasTrigger      — đặt lịch tự chạy sendChristmasBatch mỗi ngày
+        lúc 10h (giờ UK) cho tới khi gửi hết thì trigger tự xóa
+   ========================================================= */
+const XMAS_SHEET_NAME = "Xmas Email List";
+const XMAS_TEMPLATE_NAME = "ChristmasEmail";   // file HTML trong project Apps Script
+const XMAS_GIF_FILE_ID = "GIF_FILE_ID";        // ID file christmas_header.gif trên Google Drive
+const XMAS_SENDER_NAME = "Jenny at Glam Nails";
+const XMAS_SUBJECT_EMOJI = "🎄";     // viết dạng escape vì ghi trực tiếp emoji dễ lỗi font
+const XMAS_DAILY_LIMIT = 95;                   // tối đa mỗi lần chạy
+const XMAS_QUOTA_RESERVE = 5;                  // chừa lại cho email xác nhận đặt lịch của khách (cùng hạn mức ~100/ngày)
+const XMAS_MAX_RUN_MS = 270000;                // dừng trước giới hạn 6 phút của Apps Script
+
+function readXmasList_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(XMAS_SHEET_NAME);
+  if (!sheet) {
+    throw new Error('Không thấy tab "' + XMAS_SHEET_NAME + '" — hãy import Xmas_Email_List.csv thành tab này trước.');
+  }
+  const values = sheet.getDataRange().getValues();
+  const header = values[0].map(function (h) { return String(h).trim(); });
+  const col = {};
+  ["First Name", "Email", "Status", "Note", "Sent"].forEach(function (name) {
+    const i = header.indexOf(name);
+    if (i === -1) throw new Error('Tab "' + XMAS_SHEET_NAME + '" thiếu cột "' + name + '".');
+    col[name] = i;
+  });
+  return { sheet: sheet, values: values, col: col };
+}
+
+function escapeHtml_(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// true = event còn trên Calendar, false = đã bị xóa, null = không xác định được
+// (lỗi tạm thời — không được coi là đã hủy).
+function checkEventExists_(calendar, eventId) {
+  try {
+    return calendar.getEventById(eventId) ? true : false;
+  } catch (err) {
+    return null;
+  }
+}
+
+function previewCancelledCustomers() { filterCancelledXmasCustomers_(true); }
+function applyCancelledCustomers() { filterCancelledXmasCustomers_(false); }
+
+// Khách "đã hủy lịch" = hủy bằng cách xóa event trên Calendar (kiểm tra qua cột
+// Calendar Event ID trong tab Bookings):
+//  - TẤT CẢ lịch kiểm tra được của khách đều đã bị xóa  -> Status = EXCLUDE
+//  - chỉ MỘT PHẦN lịch bị xóa (khách vẫn còn lịch khác) -> giữ SEND, chỉ ghi chú
+//  - email không còn dòng nào trong Bookings (dòng đã bị xóa khi hủy, hoặc
+//    email đã được sửa tay) -> Status = CHECK để người duyệt quyết định
+// Chỉ xử lý dòng đang SEND và chưa gửi. Chạy lại nhiều lần vẫn an toàn.
+function filterCancelledXmasCustomers_(dryRun) {
+  const list = readXmasList_();
+  const col = list.col;
+
+  const bookings = getSheet_().getDataRange().getValues();
+  const byEmail = {};
+  for (let i = 1; i < bookings.length; i++) {
+    const email = String(bookings[i][5] || "").trim().toLowerCase();   // cột Email
+    if (!email) continue;
+    (byEmail[email] = byEmail[email] || []).push({
+      date: formatDateCell_(bookings[i][1]),
+      eventId: String(bookings[i][7] || "").trim()                      // cột Calendar Event ID
+    });
+  }
+
+  const calendar = CalendarApp.getCalendarById(SALON_EMAIL) || CalendarApp.getDefaultCalendar();
+  const exists = {};
+  let excluded = 0, toCheck = 0, partial = 0, untouched = 0;
+
+  for (let r = 1; r < list.values.length; r++) {
+    const row = list.values[r];
+    if (String(row[col["Status"]]).trim().toUpperCase() !== "SEND") continue;
+    if (String(row[col["Sent"]]).trim()) continue;
+
+    const email = String(row[col["Email"]]).trim().toLowerCase();
+    const found = byEmail[email];
+    let newStatus = null;
+    let noteAdd = "";
+
+    if (!found) {
+      newStatus = "CHECK";
+      noteAdd = "Không thấy email này trong tab Bookings (dòng đã bị xóa khi hủy, hoặc email đã sửa tay)";
+    } else {
+      let checked = 0;
+      const cancelledDates = [];
+      found.forEach(function (b) {
+        if (!b.eventId || b.eventId.indexOf("calendar_error") === 0) return;
+        if (!(b.eventId in exists)) exists[b.eventId] = checkEventExists_(calendar, b.eventId);
+        if (exists[b.eventId] === null) return;
+        checked++;
+        if (exists[b.eventId] === false) cancelledDates.push(b.date);
+      });
+      if (checked > 0 && cancelledDates.length === checked) {
+        newStatus = "EXCLUDE";
+        noteAdd = "Đã hủy lịch (event Calendar đã bị xóa): " + cancelledDates.join(", ");
+      } else if (cancelledDates.length > 0) {
+        noteAdd = "Có " + cancelledDates.length + "/" + checked + " lịch đã hủy (" + cancelledDates.join(", ") + ") nhưng khách còn lịch khác — giữ SEND";
+      }
+    }
+
+    if (!newStatus && !noteAdd) { untouched++; continue; }
+    if (newStatus === "EXCLUDE") excluded++; else if (newStatus === "CHECK") toCheck++; else partial++;
+
+    Logger.log("Dòng " + (r + 1) + " " + email + ": " + (newStatus ? "-> " + newStatus + " | " : "giữ SEND | ") + noteAdd);
+    if (dryRun) continue;
+    if (newStatus) list.sheet.getRange(r + 1, col["Status"] + 1).setValue(newStatus);
+    const oldNote = String(row[col["Note"]] || "").trim();
+    if (oldNote.indexOf(noteAdd) === -1) {
+      list.sheet.getRange(r + 1, col["Note"] + 1).setValue(oldNote ? oldNote + " | " + noteAdd : noteAdd);
+    }
+  }
+
+  Logger.log((dryRun ? "[XEM TRƯỚC — chưa sửa gì] " : "[ĐÃ GHI] ") +
+    excluded + " khách -> EXCLUDE, " + toCheck + " khách -> CHECK, " + partial + " khách chỉ ghi chú (hủy một phần), " +
+    untouched + " khách không đổi.");
+}
+
+function previewChristmasBatch() { sendChristmasBatch_(true); }
+function sendChristmasBatch() { sendChristmasBatch_(false); }
+
+// Gửi cho các dòng Status = SEND và cột Sent còn trống, tối đa XMAS_DAILY_LIMIT
+// (và không vượt hạn mức MailApp còn lại trong ngày). Ghi giờ gửi (giờ UK) vào
+// cột Sent ngay sau mỗi email; lỗi thì ghi "ERROR: ..." để không bị gửi lại.
+function sendChristmasBatch_(dryRun) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    Logger.log("Một lần gửi khác đang chạy — bỏ qua lần này.");
+    return;
+  }
+  try {
+    const list = readXmasList_();
+    const col = list.col;
+
+    const sentEmails = {};
+    const pending = [];
+    for (let r = 1; r < list.values.length; r++) {
+      const row = list.values[r];
+      const email = String(row[col["Email"]]).trim().toLowerCase();
+      const sent = String(row[col["Sent"]]).trim();
+      if (sent && email) sentEmails[email] = true;
+      if (sent || !email) continue;
+      if (String(row[col["Status"]]).trim().toUpperCase() !== "SEND") continue;
+      pending.push({ rowNum: r + 1, email: email, firstName: String(row[col["First Name"]]).trim() });
+    }
+
+    if (!pending.length) {
+      Logger.log("Không còn khách nào cần gửi (Status = SEND và Sent trống).");
+      if (!dryRun) removeChristmasTriggers_();
+      return;
+    }
+
+    if (!XMAS_GIF_FILE_ID || XMAS_GIF_FILE_ID === "GIF_FILE_ID") {
+      throw new Error("Chưa điền XMAS_GIF_FILE_ID (ID file christmas_header.gif trên Google Drive).");
+    }
+    const template = HtmlService.createHtmlOutputFromFile(XMAS_TEMPLATE_NAME).getContent();
+    if (template.indexOf("{First name}") === -1 || template.indexOf("{HEADER_IMG}") === -1) {
+      throw new Error('File HTML "' + XMAS_TEMPLATE_NAME + '" thiếu {First name} hoặc {HEADER_IMG}.');
+    }
+    const gif = DriveApp.getFileById(XMAS_GIF_FILE_ID).getBlob();
+
+    const quotaLeft = MailApp.getRemainingDailyQuota();
+    const limit = Math.max(0, Math.min(XMAS_DAILY_LIMIT, quotaLeft - XMAS_QUOTA_RESERVE));
+    Logger.log("Cần gửi " + pending.length + " khách; hạn mức MailApp còn " + quotaLeft + " -> lần này gửi tối đa " + limit + ".");
+    if (!limit) return;
+
+    const startedAt = Date.now();
+    let sent = 0, failed = 0, dup = 0;
+    for (let i = 0; i < pending.length && sent < limit; i++) {
+      if (Date.now() - startedAt > XMAS_MAX_RUN_MS) {
+        Logger.log("Sắp hết thời gian chạy của Apps Script — dừng, phần còn lại gửi ở lần sau.");
+        break;
+      }
+      const p = pending[i];
+      const sentCell = list.sheet.getRange(p.rowNum, col["Sent"] + 1);
+
+      if (sentEmails[p.email]) {
+        Logger.log("Dòng " + p.rowNum + " " + p.email + ": trùng email đã gửi — bỏ qua.");
+        if (!dryRun) { sentCell.setValue("SKIPPED: duplicate email"); SpreadsheetApp.flush(); }
+        dup++;
+        continue;
+      }
+
+      const name = p.firstName || "there";
+      if (dryRun) {
+        Logger.log("[XEM TRƯỚC] dòng " + p.rowNum + ": sẽ gửi cho " + name + " <" + p.email + ">");
+        sentEmails[p.email] = true;
+        sent++;
+        continue;
+      }
+
+      const safeName = escapeHtml_(name);
+      const html = template
+        .replace(/\{First name\}/g, function () { return safeName; })
+        .replace("{HEADER_IMG}", "cid:snowHeader");
+      try {
+        MailApp.sendEmail({
+          to: p.email,
+          subject: name + ", first dibs on our Christmas appointments " + XMAS_SUBJECT_EMOJI,
+          htmlBody: html,
+          inlineImages: { snowHeader: gif },
+          name: XMAS_SENDER_NAME
+        });
+        sentCell.setValue(Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd HH:mm"));
+        SpreadsheetApp.flush();
+        sentEmails[p.email] = true;
+        sent++;
+      } catch (err) {
+        const msg = String(err && err.message ? err.message : err);
+        if (/too many times|quota|limit exceeded/i.test(msg)) {
+          Logger.log("Hết hạn mức email trong ngày — dừng: " + msg);
+          break;
+        }
+        sentCell.setValue("ERROR: " + msg);
+        SpreadsheetApp.flush();
+        Logger.log("Dòng " + p.rowNum + " " + p.email + ": lỗi gửi — " + msg);
+        failed++;
+      }
+    }
+
+    const left = pending.length - sent - failed - dup;
+    Logger.log((dryRun ? "[XEM TRƯỚC — chưa gửi gì] " : "[ĐÃ GỬI] ") +
+      sent + " email, " + failed + " lỗi, " + dup + " trùng bỏ qua; còn lại chưa xử lý: " + left + ".");
+
+    if (!dryRun && left === 0) {
+      removeChristmasTriggers_();
+      Logger.log("Đã gửi hết danh sách — đã xóa trigger hằng ngày.");
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Đặt trigger chạy sendChristmasBatch mỗi ngày lúc 10h (giờ UK). Lần đầu nên
+// bấm Run sendChristmasBatch bằng tay trong hôm nay (để cấp quyền Drive/Mail và
+// gửi đợt đầu), trigger sẽ lo các ngày tiếp theo.
+function setupChristmasTrigger() {
+  removeChristmasTriggers_();
+  ScriptApp.newTrigger("sendChristmasBatch")
+    .timeBased()
+    .everyDays(1)
+    .atHour(10)
+    .inTimezone(TIMEZONE)
+    .create();
+  Logger.log("Đã đặt trigger: sendChristmasBatch chạy mỗi ngày khoảng 10h (giờ UK).");
+}
+
+function removeChristmasTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "sendChristmasBatch") ScriptApp.deleteTrigger(t);
+  });
+}
