@@ -41,7 +41,7 @@ const HOURS_OVERRIDES = [
 ];
 
 // Trong khoảng ngày này (hết mùa lễ) mỗi khung giờ chỉ nhận ít chỗ hơn.
-const REDUCED_CAPACITY_FROM = "2026-12-20";
+const REDUCED_CAPACITY_FROM = "2026-12-14";
 const REDUCED_CAPACITY_TO = "2027-01-02";
 const REDUCED_MAX_PER_SLOT = 2;
 

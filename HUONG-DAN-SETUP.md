@@ -101,7 +101,7 @@ Việc này giúp script luôn ở trạng thái "ấm", nên hầu hết các l
   const MAX_PER_SLOT = 3;                         // số chỗ mỗi khung giờ
   const HOURS_BY_DOW = { ... };                   // giờ mở cửa theo thứ (CN 10:00-16:30, T2-T7 10:00-18:00)
   const HOURS_OVERRIDES = [ ... ];                // giờ riêng cho ngày/khoảng ngày cụ thể (mùa lễ cuối năm 2026)
-  const REDUCED_CAPACITY_FROM = "2026-12-20";     // trong khoảng 20/12/2026 - 02/01/2027
+  const REDUCED_CAPACITY_FROM = "2026-12-14";     // trong khoảng 14/12/2026 - 02/01/2027
   const REDUCED_CAPACITY_TO = "2027-01-02";       // mỗi khung chỉ nhận
   const REDUCED_MAX_PER_SLOT = 2;                 // 2 chỗ
   ```
